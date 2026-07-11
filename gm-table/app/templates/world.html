@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>World &amp; Time &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap" style="max-width:1000px">
+  <div class="masthead"><div class="crest">&#9728;</div>
+    <div><h1>World &amp; Time</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a></div></div>
+  </div>
+  <div class="sheet-grid">
+    <div class="panel"><span class="eyebrow">Time &amp; date</span>
+      <div class="tile" style="margin-bottom:10px"><div class="lbl">Time</div><div class="big" id="clock">--:--</div></div>
+      <div class="tile" style="margin-bottom:10px"><div class="lbl">Date</div><div class="big" id="date" style="font-size:20px">--</div></div>
+      <div class="efields" style="margin-bottom:8px">
+        <button class="btn ghost" data-adv="10">+10m</button>
+        <button class="btn ghost" data-adv="60">+1h</button>
+        <button class="btn ghost" data-adv="480">+8h</button>
+        <button class="btn ghost" data-adv="1440">+1 day</button>
+      </div>
+      <div class="cv-mini">Set date directly</div>
+      <div class="efields">
+        <select id="set-month"></select>
+        <input id="set-day" type="number" min="1" placeholder="day" style="width:70px">
+        <input id="set-year" type="number" placeholder="year" style="width:90px">
+        <input id="set-time" type="time" style="width:110px">
+        <button class="btn" id="set-date">Set</button>
+      </div>
+    </div>
+    <div class="panel"><span class="eyebrow">Weather</span>
+      <div class="gen-out" id="wx">&mdash;</div>
+      <button class="btn" id="genwx" style="margin-top:10px">Generate weather</button>
+      <div class="cv-mini">Weather types</div>
+      <div id="wx-types"></div>
+      <div class="efields" style="margin-top:6px">
+        <input id="wx-new" placeholder="Add a precipitation type" style="flex:1">
+        <button class="btn ghost" id="wx-add">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">Calendar &mdash; custom months</span>
+    <p class="sub" style="margin-top:0">Define your world's months and how many days each has. Add or remove months to change the length of the year.</p>
+    <div id="months"></div>
+    <button class="sec-add" id="add-month" style="margin-top:10px">+ Add month</button>
+  </div>
+</div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const cid="{{ campaign.id }}"; const socket=io();
+socket.on('connect',()=>socket.emit('join',{campaignId:cid}));
+let world={{ campaign.world | tojson }};
+world.calendar=world.calendar||{months:[{name:'Month',days:30}],year:1,monthIndex:0,day:1};
+world.weatherOptions=world.weatherOptions||{precip:["Clear","Overcast","Light rain","Heavy rain","Fog","Snow","Storm"],wind:["Still","Light breeze","Gusty","Strong winds","Gale"]};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function commit(){ socket.emit('world:update',{campaignId:cid,world}); }
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+function render(){
+  const t=world.time.minutes%1440, h=Math.floor(t/60), m=t%60;
+  document.getElementById('clock').textContent=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  const cal=world.calendar, mon=(cal.months[cal.monthIndex]||{name:'Month'}).name;
+  document.getElementById('date').textContent='Day '+cal.day+' of '+mon+', Year '+cal.year;
+  // month select
+  const sm=document.getElementById('set-month');
+  sm.innerHTML=cal.months.map((mo,i)=>`<option value="${i}" ${i===cal.monthIndex?'selected':''}>${esc(mo.name)}</option>`).join('');
+  document.getElementById('set-day').value=cal.day; document.getElementById('set-year').value=cal.year;
+  document.getElementById('set-time').value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  // weather
+  const w=world.weather; document.getElementById('wx').innerHTML=`<b>${esc(w.precip)}</b> &middot; ${esc(w.wind)} &middot; ${w.temp_c}&deg;C (feels ${w.feels_c}&deg;C)`;
+  document.getElementById('wx-types').innerHTML=world.weatherOptions.precip.map((p,i)=>
+    `<span class="cond buff" style="margin:2px">${esc(p)} <span style="cursor:pointer" data-wxrm="${i}">&times;</span></span>`).join('');
+  document.querySelectorAll('[data-wxrm]').forEach(x=>x.onclick=()=>{ world.weatherOptions.precip.splice(+x.dataset.wxrm,1); commit(); render(); });
+  // months editor
+  document.getElementById('months').innerHTML=cal.months.map((mo,i)=>`
+    <div class="erow"><div class="efields">
+      <input data-mn="${i}" value="${esc(mo.name)}" placeholder="Month name" style="flex:2">
+      <input data-md="${i}" type="number" min="1" value="${mo.days}" style="width:80px"> days
+    </div><button class="erm" data-mrm="${i}">&times;</button></div>`).join('');
+  document.querySelectorAll('[data-mn]').forEach(el=>el.onchange=()=>{ cal.months[+el.dataset.mn].name=el.value; commit(); });
+  document.querySelectorAll('[data-md]').forEach(el=>el.onchange=()=>{ cal.months[+el.dataset.md].days=+el.value||1; commit(); });
+  document.querySelectorAll('[data-mrm]').forEach(b=>b.onclick=()=>{
+    if(cal.months.length<=1) return alert('Keep at least one month.');
+    cal.months.splice(+b.dataset.mrm,1); if(cal.monthIndex>=cal.months.length) cal.monthIndex=0; commit(); render();
+  });
+}
+document.querySelectorAll('[data-adv]').forEach(b=>b.onclick=()=>{
+  world.time.minutes+=Number(b.dataset.adv);
+  while(world.time.minutes>=1440){ world.time.minutes-=1440; advanceDay(); }
+  commit(); render();
+});
+function advanceDay(){ const cal=world.calendar; cal.day++; const days=(cal.months[cal.monthIndex]||{days:30}).days;
+  if(cal.day>days){ cal.day=1; cal.monthIndex++; if(cal.monthIndex>=cal.months.length){cal.monthIndex=0;cal.year++;} } }
+document.getElementById('set-date').onclick=()=>{
+  const cal=world.calendar; cal.monthIndex=+document.getElementById('set-month').value||0;
+  cal.day=+document.getElementById('set-day').value||1; cal.year=+document.getElementById('set-year').value||1;
+  const tv=document.getElementById('set-time').value; if(tv){ const [hh,mm]=tv.split(':').map(Number); world.time.minutes=hh*60+mm; }
+  commit(); render();
+};
+document.getElementById('genwx').onclick=()=>{
+  const wo=world.weatherOptions; const temp=Math.floor(Math.random()*43)-5;
+  world.weather={precip:pick(wo.precip),wind:pick(wo.wind),temp_c:temp,feels_c:temp+pick([-4,-2,0,0,2,4])};
+  commit(); render();
+};
+document.getElementById('wx-add').onclick=()=>{
+  const v=document.getElementById('wx-new').value.trim(); if(!v) return;
+  world.weatherOptions.precip.push(v); document.getElementById('wx-new').value=''; commit(); render();
+};
+document.getElementById('add-month').onclick=()=>{ world.calendar.months.push({name:'New Month',days:30}); commit(); render(); };
+socket.on('world:update',m=>{ world=m.world; world.weatherOptions=world.weatherOptions||{precip:[],wind:[]}; render(); });
+render();
+</script>
+<script>window.__CID__="{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

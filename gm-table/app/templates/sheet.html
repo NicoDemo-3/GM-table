@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ char.definition.name }} — Sheet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-char-id="{{ char.id }}">
+<div id="tooltip"></div>
+<div class="wrap">
+
+  <div class="explainer" id="explainer">
+    <span class="x" id="explainer-close">×</span>
+    <div class="e-title" id="e-title"></div>
+    <div id="e-text"></div>
+    <div class="e-roll" id="e-roll"></div>
+    <div class="hint">Tip: hover any underlined term for a quick note, or click it to pin the full explanation here.</div>
+  </div>
+
+
+  <div class="masthead">
+    <div class="crest">{{ char.definition.name[0] }}</div>
+    <div>
+      <h1>{{ char.definition.name }}</h1>
+      <div class="sub">
+        {{ char.definition.species }} · {{ char.definition.background }}
+        {% for cl in char.definition.classes %}· {{ cl.name }} {{ cl.level }}{% endfor %}
+        · Level <span class="numeral">{{ char.derived.totalLevel }}</span>
+      </div>
+    </div>
+    <div class="actions"><a class="btn subtle" href="/c/{{ campaign.id }}">← Roster</a></div>
+  </div>
+
+  <div class="sheet-grid">
+
+    <!-- LEFT COLUMN -->
+    <div>
+      {% if char.definition.portrait %}
+      <img class="portrait" src="{{ char.definition.portrait }}" alt="{{ char.definition.name }}">
+      {% endif %}
+
+      <div class="panel" style="margin-top:16px">
+        <div class="abilities">
+          {% for ab in ['STR','DEX','CON','INT','WIS','CHA'] %}
+          <div class="abil" data-ability="{{ ab }}" data-mod="{{ char.derived.abilityMods[ab] }}">
+            <div class="name">{{ ab }}</div>
+            <div class="mod numeral" data-derived="abilityMods.{{ ab }}" data-sign>{{ '%+d' % char.derived.abilityMods[ab] }}</div>
+            <div class="score numeral">{{ char.definition.abilityScores[ab] }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="panel">
+        <span class="eyebrow" data-term="savingThrow">Saving throws</span>
+        {% for ab in ['STR','DEX','CON','INT','WIS','CHA'] %}
+        <div class="kv {% if char.definition.saves.get(ab) in ['proficient','expertise'] %}prof{% endif %}">
+          <span class="k">{{ ab }}</span>
+          <span class="numeral" data-derived="saves.{{ ab }}" data-sign>{{ '%+d' % char.derived.saves[ab] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="panel">
+        <span class="eyebrow" data-term="skill">Skills</span>
+        {% for name, val in char.derived.skills.items() %}
+        <div class="kv {% if char.definition.skills.get(name) in ['proficient','expertise'] %}prof{% endif %}">
+          <span class="k">{{ name }}{% if char.definition.skills.get(name)=='expertise' %} <span style="color:var(--gold)">✦</span>{% endif %}</span>
+          <span class="numeral" data-sign>{{ '%+d' % val }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+      <!-- XP & leveling -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow">Experience &amp; level</span>
+          <span class="numeral" style="font-family:'Cormorant Garamond',serif;font-size:18px">Level <span id="xp-level">{{ char.derived.totalLevel }}</span></span>
+        </div>
+        <div class="xp-bar"><i id="xp-fill" style="width:0%"></i><span id="xp-text" class="numeral"></span></div>
+        <div class="xp-controls">
+          <input type="number" id="xp-amount" placeholder="XP" class="numeral">
+          <button class="btn subtle" id="xp-award">Award</button>
+          <button class="btn" id="xp-levelup" style="display:none">⬆ Level Up!</button>
+        </div>
+        <details class="dm-tools">
+          <summary>DM tools</summary>
+          <div class="dm-row">
+            <label>Set total level</label>
+            <select id="set-class"></select>
+            <input type="number" id="set-level" min="1" max="20" class="numeral" style="width:60px">
+            <button class="btn subtle" id="do-setlevel">Set</button>
+          </div>
+          <div style="font-size:12px;color:var(--ink-soft);margin-top:6px">Jumps a character to a level (for campaigns that start above 1). Heals to full; clears any HP override.</div>
+          <a href="/content" class="btn ghost" style="margin-top:8px;display:inline-block">Edit XP thresholds &amp; content →</a>
+        </details>
+      </div>
+
+      <!-- core combat tiles -->
+      <div class="panel">
+        <div class="tiles">
+          <div class="tile editable" data-edit-tile="definition.acOverride" data-computed="{{ char.derived.armorClass.computed }}">
+            <span class="ovr" data-ovr-flag {% if not char.derived.armorClass.overridden %}hidden{% endif %}>set</span>
+            <div class="lbl" data-term="armorClass">Armor Class</div>
+            <input type="number" data-bind="definition.acOverride|ac" value="{{ char.derived.armorClass.value }}">
+          </div>
+          <div class="tile">
+            <div class="lbl" data-term="initiative">Initiative</div>
+            <div class="big numeral" data-derived="initiative" data-sign>{{ '%+d' % char.derived.initiative }}</div>
+          </div>
+          <div class="tile">
+            <div class="lbl" data-term="speed">Speed</div>
+            <div class="big numeral">{{ char.definition.speed.get('walk', 30) }}</div>
+          </div>
+          <div class="tile">
+            <div class="lbl" data-term="proficiencyBonus">Prof. Bonus</div>
+            <div class="big numeral" data-sign>{{ '%+d' % char.derived.proficiencyBonus }}</div>
+          </div>
+          <div class="tile">
+            <div class="lbl" data-term="spellSaveDc">Spell Save DC</div>
+            <div class="big numeral" data-derived="spellSaveDc">{{ char.derived.spellSaveDc or '—' }}</div>
+          </div>
+          <div class="tile">
+            <div class="lbl" data-term="passivePerception">Passive Perc.</div>
+            <div class="big numeral" data-derived="passivePerception">{{ char.derived.passivePerception }}</div>
+          </div>
+        </div>
+
+        <!-- HP -->
+        <div style="margin-top:14px" class="hp">
+          <div class="tile editable cur">
+            <div class="lbl" data-term="currentHp">Current HP</div>
+            <input type="number" data-bind="state.currentHp" value="{{ char.state.currentHp }}">
+          </div>
+          <div class="slash">/</div>
+          <div class="tile editable" data-edit-tile="definition.maxHpOverride" data-computed="{{ char.derived.maxHp.computed }}">
+            <span class="ovr" data-ovr-flag {% if not char.derived.maxHp.overridden %}hidden{% endif %}>set</span>
+            <div class="lbl" data-term="maxHp">Max HP</div>
+            <input type="number" data-bind="definition.maxHpOverride|max" value="{{ char.derived.maxHp.value }}">
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:12px;flex-wrap:wrap">
+          <div class="tile editable" style="flex:1;min-width:90px">
+            <div class="lbl" data-term="tempHp">Temp HP</div>
+            <input type="number" data-bind="state.tempHp" value="{{ char.state.tempHp }}">
+          </div>
+          <div class="toggle-chip {% if char.state.inspiration %}on{% endif %}" data-toggle="state.inspiration" {% if char.state.inspiration %}data-on{% endif %}>
+            <span data-term="inspiration">✦ Inspiration</span>
+          </div>
+        </div>
+
+        <!-- quick actions -->
+        <div class="qa">
+          <div class="qa-dmg">
+            <input type="number" id="qa-amt" placeholder="amount" min="0">
+            <button class="btn" id="qa-damage">Damage</button>
+            <button class="btn ghost" id="qa-heal">Heal</button>
+          </div>
+          <div class="qa-death" id="qa-death">
+            <span class="qa-lbl" data-term="deathSaves">Death saves</span>
+            <span class="ds" data-ds="success"></span>
+            <span class="ds" data-ds="failure"></span>
+            <button class="btn subtle" id="ds-reset">reset</button>
+          </div>
+          <div class="qa-hd" id="qa-hd">
+            <span class="qa-lbl" data-term="hitDice">Hit dice</span>
+            <span id="hd-btns"></span>
+          </div>
+        </div>
+      </div>
+        <div class="cond-list" id="cond-list"></div>
+        <div class="cond-detail" id="cond-detail" style="display:none"></div>
+        <div class="add-cond">
+          <button class="btn ghost" id="add-cond-btn">+ Add effect</button>
+          <div class="cond-menu" id="cond-menu"></div>
+        </div>
+      </div>
+
+      <!-- attacks (rendered + edited by editing.js) -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow" data-term="attacks">Attacks &amp; spell attacks</span>
+          <button class="sec-edit" data-edit="attacks">Edit</button>
+        </div>
+        <div id="sec-attacks"></div>
+        {% if char.derived.spellAttack is not none %}
+        <div class="meta" style="margin-top:8px;color:var(--ink-soft);font-size:12px">
+          Spell attack <span class="numeral" data-derived="spellAttack" data-sign>{{ '%+d' % char.derived.spellAttack }}</span>
+          · save DC <span class="numeral" data-derived="spellSaveDc">{{ char.derived.spellSaveDc }}</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- spell slots -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow" data-term="spellSlots">Spell slots</span>
+          <button class="sec-edit" data-edit="slots">Edit</button>
+        </div>
+        <div id="sec-slots"></div>
+      </div>
+
+      <!-- spells -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow">Spells</span>
+          <button class="sec-edit" data-edit="spells">Edit</button>
+        </div>
+        <div id="sec-spells"></div>
+      </div>
+
+      <!-- resources -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow" data-term="resources">Resources</span>
+          <button class="sec-edit" data-edit="resources">Edit</button>
+        </div>
+        <div id="sec-resources"></div>
+      </div>
+
+      <!-- features -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow">Features &amp; traits</span>
+          <button class="sec-edit" data-edit="features">Edit</button>
+        </div>
+        <div id="sec-features"></div>
+      </div>
+
+      <!-- inventory -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow">Inventory</span>
+          <button class="sec-edit" data-edit="inventory">Edit</button>
+        </div>
+        {% set cur = char.definition.inventory.currency %}
+        <div class="currency">
+          <div class="coin"><span class="ci gp">GP</span><input type="number" data-bind="definition.inventory.currency.gold" value="{{ cur.get('gold',0) }}"></div>
+          <div class="coin"><span class="ci sp">SP</span><input type="number" data-bind="definition.inventory.currency.silver" value="{{ cur.get('silver',0) }}"></div>
+          <div class="coin"><span class="ci cp">CP</span><input type="number" data-bind="definition.inventory.currency.copper" value="{{ cur.get('copper',0) }}"></div>
+        </div>
+        <div id="sec-inventory"></div>
+      </div>
+
+      {% if custom_widgets %}
+      <!-- custom widgets from the campaign's Widget Library -->
+      <div class="panel">
+        <div class="sec-head">
+          <span class="eyebrow">Custom stats</span>
+          <a class="sec-edit" href="/c/{{ campaign.id }}/widgets">Manage</a>
+        </div>
+        <div id="sec-custom"></div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="statusbar">
+  <span class="dot" id="conn-dot"></span>
+  <span id="conn-text">connecting…</span>
+  <span style="margin-left:auto;opacity:.7">Live-synced · edits appear on every open copy of this sheet</span>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>window.__CHAR__ = {{ char | tojson }};</script>
+<script>window.__CUSTOM_WIDGETS__ = {{ custom_widgets | tojson }}; window.__CAMPAIGN_ID__ = "{{ campaign.id }}";</script>
+<script>window.__REF__ = {{ reference | tojson }};</script>
+
+<!-- level-up modal -->
+<div class="modal-backdrop" id="lvl-modal">
+  <div class="modal">
+    <div class="modal-head"><span class="t">Level Up</span><span class="x" id="lvl-close">×</span></div>
+    <div class="modal-body" id="lvl-body"></div>
+    <div class="modal-foot"><button class="btn ghost" id="lvl-cancel">Cancel</button><button class="btn" id="lvl-confirm">Confirm level-up</button></div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='reference.js') }}"></script>
+<script src="{{ url_for('static', filename='sheet.js') }}"></script>
+<script src="{{ url_for('static', filename='editing.js') }}"></script>
+<script src="{{ url_for('static', filename='custom-widgets.js') }}"></script>
+<script src="{{ url_for('static', filename='leveling.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script src="{{ url_for('static', filename='rail.js') }}"></script>
+<script>window.__PLAYER_CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='player-sidebar.js') }}"></script>
+</body>
+</html>

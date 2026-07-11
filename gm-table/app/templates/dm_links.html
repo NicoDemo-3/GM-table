@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DM Links</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap" style="max-width:1000px">
+  <div class="masthead"><div class="crest">&#128279;</div>
+    <div><h1>DM Links</h1><div class="sub">Your curated toolkit bookmarks ·
+      <a href="{% if cid %}/c/{{ cid }}{% else %}/{% endif %}">&larr; back</a></div></div>
+  </div>
+  <div class="roster" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+    {% for title, links in groups %}
+    <div class="panel">
+      <span class="eyebrow">{{ title }}</span>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">
+        {% for label, url in links %}
+        <a href="{{ url }}" target="_blank" rel="noopener" style="color:var(--garnet);text-decoration:none;font-size:14px">&rsaquo; {{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

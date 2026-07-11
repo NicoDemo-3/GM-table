@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Soundboard &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap">
+  <div class="masthead"><div class="crest">&#128266;</div>
+    <div><h1>Soundboard</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a></div></div>
+    <div class="actions">
+      <button class="btn ghost" id="stopall">Stop all</button>
+      <label class="btn" for="snd">Add tile</label><input id="snd" type="file" accept="audio/*" hidden>
+    </div>
+  </div>
+  <div class="panel">
+    <label class="ecbx" style="margin-bottom:8px"><input type="checkbox" id="loopnew"> loop new tiles</label>
+    <div class="pick-grid" id="tiles"></div>
+  </div>
+</div>
+<script>
+const CID="{{ campaign.id }}"; let tiles={{ sounds | tojson }};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const players={};
+function render(){
+  document.getElementById('tiles').innerHTML = tiles.length ? tiles.map(t=>`
+    <div class="pick" style="cursor:default">
+      <div class="pname" style="font-size:18px">${esc(t.label)}</div>
+      <div class="efields" style="justify-content:center;margin-top:8px">
+        <button class="btn play" data-id="${t.id}" data-url="${t.url}" data-loop="${t.loop?1:0}">&#9654; Play</button>
+        <button class="btn ghost stop" data-id="${t.id}">&#9632;</button>
+        <button class="erm" data-del="${t.id}">&times;</button>
+      </div>
+      <input type="range" min="0" max="100" value="80" class="map-slider vol" data-id="${t.id}">
+    </div>`).join('') : '<p class="empty">No sounds yet. Add a tile (MP3/WAV/OGG).</p>';
+  document.querySelectorAll('.play').forEach(b=>b.onclick=()=>{
+    let a=players[b.dataset.id];
+    if(!a){ a=new Audio(b.dataset.url); players[b.dataset.id]=a; }
+    a.loop=b.dataset.loop==='1';
+    const v=document.querySelector('.vol[data-id="'+b.dataset.id+'"]'); a.volume=(v?v.value:80)/100;
+    a.currentTime=0; a.play();
+  });
+  document.querySelectorAll('.stop').forEach(b=>b.onclick=()=>{ const a=players[b.dataset.id]; if(a){a.pause();a.currentTime=0;} });
+  document.querySelectorAll('.vol').forEach(s=>s.oninput=()=>{ const a=players[s.dataset.id]; if(a)a.volume=s.value/100; });
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+    await fetch('/api/campaign/'+CID+'/sound/'+b.dataset.del,{method:'DELETE'});
+    const a=players[b.dataset.del]; if(a){a.pause();} tiles=tiles.filter(x=>x.id!==b.dataset.del); render();
+  });
+}
+document.getElementById('stopall').onclick=()=>Object.values(players).forEach(a=>{a.pause();a.currentTime=0;});
+document.getElementById('snd').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f) return; const fd=new FormData(); fd.append('file',f);
+  fd.append('loop', document.getElementById('loopnew').checked?'1':'0');
+  const r=await fetch('/api/campaign/'+CID+'/sound',{method:'POST',body:fd}); const d=await r.json();
+  if(!r.ok){alert(d.error||'Upload failed');return;} tiles.push(d.tile); render();
+});
+render();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body></html>

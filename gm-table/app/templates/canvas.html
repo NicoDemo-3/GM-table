@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canvas &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="cv-wrap" id="wrap"><div class="cv-surface" id="surface"></div></div>
+
+<div class="cv-dock" id="dock">
+  <div class="cv-dock-top"><b style="flex:1">{{ campaign.name }}</b>
+    <button id="dock-toggle" title="Collapse">&#9776;</button>
+    <a href="/c/{{ campaign.id }}" style="color:var(--vellum-2);text-decoration:none;font-size:18px;padding:0 4px" title="Exit">&times;</a>
+  </div>
+  <div class="cv-dock-body">
+    <div class="cv-mini">Focus presets</div>
+    <div id="presets"></div>
+    <button class="btn ghost" id="add-preset" style="width:100%;margin-top:6px">+ New preset</button>
+    <label class="ecbx" style="margin-top:10px"><input type="checkbox" id="shared"> Share window layout across presets</label>
+    <div class="cv-mini">Add window</div>
+    <div id="addwins" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+    <div class="cv-mini">Removed (kept)</div>
+    <div id="stash"></div>
+  </div>
+</div>
+
+<div class="cv-zoom">
+  <button id="zout" title="Zoom out">&minus;</button>
+  <button id="zin" title="Zoom in">+</button>
+  <button id="zreset" title="Reset view">&#9678;</button>
+</div>
+
+<script>
+window.__CID__="{{ campaign.id }}";
+window.__CANVAS__={{ canvas | tojson }};
+window.__TOOLS__={{ tools | tojson }};
+</script>
+<script src="{{ url_for('static', filename='canvas.js') }}"></script>
+</body></html>

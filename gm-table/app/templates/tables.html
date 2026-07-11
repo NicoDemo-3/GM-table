@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roll Tables &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap">
+  <div class="masthead"><div class="crest">&#127922;</div>
+    <div><h1>Roll Tables</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a></div></div>
+    <div class="actions"><button class="btn ghost" id="seedcf">Add crit-fail d100 table</button></div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">New simple table</span>
+    <div class="efields"><input id="tn" placeholder="Table name" style="flex:1"></div>
+    <textarea id="te" placeholder="One result per line" rows="3" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:4px;padding:6px;background:var(--vellum-2);color:var(--ink)"></textarea>
+    <button class="btn" id="add" style="margin-top:8px">Create table</button>
+  </div>
+
+  <div class="panel"><span class="eyebrow">New advanced table (weighted / multi-column)</span>
+    <div class="efields">
+      <input id="an" placeholder="Table name" style="flex:2">
+      <input id="adie" placeholder="die (e.g. d100)" value="d100" style="width:90px">
+      <input id="acols" placeholder="columns, comma (e.g. Melee,Ranged,Spell)" style="flex:2">
+    </div>
+    <textarea id="arows" placeholder="One row per line: min-max | col1 | col2 | ...   (e.g.  1-5 | A sword snaps | Bow misfires)" rows="4" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:4px;padding:6px;background:var(--vellum-2);color:var(--ink)"></textarea>
+    <button class="btn" id="addadv" style="margin-top:8px">Create advanced table</button>
+  </div>
+
+  <div id="list"></div>
+</div>
+<script>
+const CID="{{ campaign.id }}"; let tables={{ tables | tojson }};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function render(){
+  document.getElementById('list').innerHTML = tables.map(t=>{
+    const ranged = t.type==='ranged';
+    const meta = ranged ? (t.die+' &middot; '+(t.columns||[]).join(' / ')+' &middot; '+(t.rows||[]).length+' rows')
+                        : ((t.entries||[]).length+' entries');
+    return `<div class="panel"><div class="sec-head"><span class="eyebrow">${esc(t.name)} <span style="color:var(--ink-soft);font-weight:400">(${meta})</span></span>
+      <span><button class="btn" onclick="roll('${t.id}')">Roll</button> <button class="erm" onclick="del('${t.id}')">&times;</button></span></div>
+      <div id="out-${t.id}" class="gen-out" style="display:none"></div></div>`;
+  }).join('') || '<div class="panel"><p class="empty">No tables yet.</p></div>';
+}
+async function add(){
+  const name=document.getElementById('tn').value.trim()||'Table';
+  const entries=document.getElementById('te').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const r=await fetch('/api/campaign/'+CID+'/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,entries})});
+  const d=await r.json(); tables.push(d.item); document.getElementById('tn').value=''; document.getElementById('te').value=''; render();
+}
+async function addAdv(){
+  const name=document.getElementById('an').value.trim()||'Table';
+  const die=document.getElementById('adie').value.trim()||'d100';
+  const columns=document.getElementById('acols').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const rows=document.getElementById('arows').value.split('\n').map(s=>s.trim()).filter(Boolean).map(line=>{
+    const parts=line.split('|').map(s=>s.trim());
+    const rng=(parts[0]||'').split('-'); const min=parseInt(rng[0],10)||1; const max=parseInt(rng[1]||rng[0],10)||min;
+    return {min,max,values:parts.slice(1)};
+  });
+  const r=await fetch('/api/campaign/'+CID+'/tables',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,type:'ranged',die,columns,rows})});
+  const d=await r.json(); tables.push(d.item); document.getElementById('an').value=''; document.getElementById('arows').value=''; render();
+}
+async function roll(id){
+  const r=await fetch('/api/campaign/'+CID+'/tables/'+id+'/roll'); const d=await r.json();
+  const o=document.getElementById('out-'+id); o.style.display='block';
+  if(d.roll!=null){
+    let html='<b>'+d.die+' &rarr; '+d.roll+'</b>';
+    (d.columns||[]).forEach((c,i)=>{ const v=(d.values||[])[i]||'&mdash;'; html+=`<div class="tool-row"><span style="width:90px;color:var(--ink-soft)">${esc(c)}</span><span class="grow">${esc(v)}</span></div>`; });
+    o.innerHTML=html;
+  } else { o.innerHTML='&#127922; <b>'+esc(d.result||'(empty)')+'</b>'; }
+}
+async function del(id){ await fetch('/api/campaign/'+CID+'/tables/'+id,{method:'DELETE'}); tables=tables.filter(x=>x.id!==id); render(); }
+document.getElementById('add').addEventListener('click',add);
+document.getElementById('addadv').addEventListener('click',addAdv);
+document.getElementById('seedcf').addEventListener('click',async()=>{
+  const r=await fetch('/api/campaign/'+CID+'/tables/seed-critfail',{method:'POST'}); const d=await r.json();
+  alert(d.added?'Added the crit-fail d100 table.':'You already have it.'); location.reload();
+});
+render();
+</script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

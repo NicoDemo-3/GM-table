@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NPCs — {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap">
+  <div class="masthead"><div class="crest">&#128100;</div>
+    <div><h1>NPC Library</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a></div></div>
+    <div class="actions"><button class="btn ghost" id="gen">Generate random NPC</button></div>
+  </div>
+  <div class="panel"><span class="eyebrow">Add an NPC</span>
+    <div class="efields">
+      <input id="n" placeholder="Name" style="flex:2"><input id="role" placeholder="Role" style="flex:1">
+      <input id="tags" placeholder="tags, comma sep" style="flex:1"><button class="btn" id="add">Add</button>
+    </div>
+    <textarea id="desc" placeholder="Description / notes" rows="2" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:4px;padding:6px;background:var(--vellum-2);color:var(--ink)"></textarea>
+    <div id="genout"></div>
+  </div>
+  <div class="panel"><span class="eyebrow">NPCs</span><div id="list"></div></div>
+</div>
+<script>
+const CID="{{ campaign.id }}"; let items={{ npcs | tojson }};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function render(){
+  document.getElementById('list').innerHTML = items.length ? items.map(p=>`
+    <div class="tool-row"><span class="grow"><b>${esc(p.name)}</b>
+      <span style="color:var(--ink-soft);font-size:12px">${esc(p.role||'')}${(p.tags&&p.tags.length)?(' · '+esc((p.tags||[]).join(', '))):''}</span>
+      ${p.description?`<div style="font-size:12px;color:var(--ink-soft)">${esc(p.description)}</div>`:''}</span>
+      <button class="erm" onclick="del('${p.id}')">&times;</button></div>`).join('') : '<p class="empty">No NPCs yet.</p>';
+}
+async function add(){
+  const item={name:document.getElementById('n').value.trim()||'NPC',role:document.getElementById('role').value,
+    tags:document.getElementById('tags').value.split(',').map(s=>s.trim()).filter(Boolean),description:document.getElementById('desc').value};
+  const r=await fetch('/api/campaign/'+CID+'/npcs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
+  const d=await r.json(); items.push(d.item); ['n','role','tags','desc'].forEach(i=>document.getElementById(i).value=''); render();
+}
+async function del(id){ await fetch('/api/campaign/'+CID+'/npcs/'+id,{method:'DELETE'}); items=items.filter(x=>x.id!==id); render(); }
+document.getElementById('add').addEventListener('click',add);
+document.getElementById('gen').addEventListener('click',async()=>{
+  const r=await fetch('/api/gen/npc'); const d=await r.json();
+  document.getElementById('n').value=d.name; document.getElementById('role').value=d.role;
+  document.getElementById('desc').value=`${d.trait}. ${d.hook}. (age ${d.age})`;
+  document.getElementById('genout').innerHTML=`<div class="gen-out">Generated <b>${esc(d.name)}</b> — ${esc(d.role)}, ${esc(d.trait)}; ${esc(d.hook)}. Edit above and Add.</div>`;
+});
+render();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body></html>

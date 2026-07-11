@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Widget Library — {{ campaign.name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">☾</button>
+<div class="wrap">
+  <div class="masthead">
+    <div class="crest">W</div>
+    <div>
+      <h1>Widget Library</h1>
+      <div class="sub">{{ campaign.name }} · the single source of all stats · <a href="/c/{{ campaign.id }}">← dashboard</a></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-head"><span class="eyebrow">Custom widgets — yours to define</span><a class="btn" href="/c/{{ campaign.id }}/builder">Open Sheet Builder →</a></div>
+    <p class="sub" style="margin-top:0">Stats the 5e engine doesn't know about (morale, faction rep, sanity, ammo…). They appear on the cards you choose. Card placement on a canvas comes next; for now sheet-scoped widgets show in a "Custom stats" panel on each sheet.</p>
+    <div id="custom-list"></div>
+    <div class="cond-detail" style="margin-top:12px">
+      <div class="efields">
+        <input id="w-label" placeholder="Label (e.g. Morale)" style="flex:2">
+        <select id="w-type">{% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
+      </div>
+      <div class="efields" style="margin-top:6px">
+        <span style="font-size:12px;color:var(--ink-soft)">Show on:</span>
+        {% for card in cards %}
+        <label class="ecbx"><input type="checkbox" class="w-card" value="{{ card }}" {% if card=='sheet' %}checked{% endif %}> {{ card }}</label>
+        {% endfor %}
+      </div>
+      <button class="btn" id="w-add" style="margin-top:8px">+ Add widget</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <span class="eyebrow">System widgets — built in (D&D 5e)</span>
+    <p class="sub" style="margin-top:0">Computed live by the 5e engine. You can place these on cards but not delete them — this is the "5e brain" MITHOS doesn't have.</p>
+    <div class="cols-2">
+      {% for w in system_widgets %}
+      <div class="kv"><span class="k">{{ w.label }}</span><span class="numeral" style="font-size:11px;color:var(--ink-soft)">{{ w.type }}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+const CID = "{{ campaign.id }}";
+let widgets = {{ campaign.widgets | tojson }};
+
+function render() {
+  const el = document.getElementById('custom-list');
+  if (!widgets.length) { el.innerHTML = '<p class="empty">No custom widgets yet.</p>'; return; }
+  el.innerHTML = widgets.map(w =>
+    `<div class="kv"><span class="k">${w.label} <span style="color:var(--ink-soft);font-size:11px">· ${w.type} · ${(w.cards||[]).join(', ')}</span></span>
+     <button class="erm" onclick="delWidget('${w.id}')">×</button></div>`).join('');
+}
+async function addWidget() {
+  const label = document.getElementById('w-label').value.trim();
+  if (!label) return;
+  const type = document.getElementById('w-type').value;
+  const cards = [...document.querySelectorAll('.w-card:checked')].map(c => c.value);
+  const r = await fetch('/api/campaign/'+CID+'/widget', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({label, type, cards})
+  });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || 'Failed'); return; }
+  widgets.push(d.widget); document.getElementById('w-label').value=''; render();
+}
+async function delWidget(id) {
+  await fetch('/api/campaign/'+CID+'/widget/'+id, { method:'DELETE' });
+  widgets = widgets.filter(w => w.id !== id); render();
+}
+document.getElementById('w-add').addEventListener('click', addWidget);
+render();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body>
+</html>

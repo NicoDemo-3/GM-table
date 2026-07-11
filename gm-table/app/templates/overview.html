@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Party Overview — DM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">☾</button>
+<div id="tooltip"></div>
+<div class="wrap">
+  <div class="masthead">
+    <div class="crest">DM</div>
+    <div><h1>Party Overview</h1><div class="sub">Live vitals &amp; effects · your command board</div></div>
+    <div class="actions"><a class="btn subtle" href="/c/{{ campaign.id }}">← Dashboard</a></div>
+  </div>
+
+  <div class="panel">
+    <span class="eyebrow">Push handout to players</span>
+    <div class="efields"><input id="ho-text" placeholder="Text or image URL to show on the player portal" style="flex:1">
+      <button class="btn" id="push-handout">Push</button>
+      <button class="btn ghost" id="clear-handout">Clear</button></div>
+  </div>
+  {% if characters %}
+  <div class="board" id="board">
+    {% set benched = campaign.get("party",{}).get("benched",[]) %}
+    {% for c in characters %}{% if c.id not in benched %}
+    {% set max = c.derived.maxHp.value or 1 %}
+    <div class="board-row" data-id="{{ c.id }}" data-max="{{ max }}">
+      <div>{% if c.definition.portrait %}<img src="{{ c.definition.portrait }}" alt="">{% endif %}</div>
+      <div class="who">
+        <div class="nm"><a href="/sheet/{{ c.id }}">{{ c.definition.name }}</a></div>
+        <div class="cls">{{ c.definition.species }}
+          {% for cl in c.definition.classes %}· {{ cl.name }} {{ cl.level }}{% endfor %}</div>
+      </div>
+      <div class="vitals numeral">
+        <span class="big" data-hp>{{ c.state.currentHp }}</span><span style="color:var(--ink-soft)">/{{ max }}</span> HP
+        {% if c.state.tempHp %}<span style="color:var(--sage)">+{{ c.state.tempHp }}</span>{% endif %}<br>
+        <span data-term="armorClass">AC</span> <b data-ac>{{ c.derived.armorClass.value }}</b> ·
+        <span data-term="passivePerception">PP</span> {{ c.derived.passivePerception }}
+      </div>
+      <div class="conds" data-conds>
+        {% for cond in c.state.conditions %}
+        <span class="cond {{ cond.kind }}" title="{{ cond.base }}{% if cond.note %} — {{ cond.note }}{% endif %}">{{ cond.name }}{% if cond.level %} <span class="lvl-badge">{{ cond.level }}</span>{% endif %}</span>
+        {% else %}
+        <span class="cond empty">—</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}{% endfor %}
+  </div>
+  {% else %}
+  <div class="panel"><p class="empty">No characters imported yet.</p></div>
+  {% endif %}
+</div>
+
+<script>window.__REF__ = {{ reference | tojson }};</script>
+<script src="{{ url_for('static', filename='reference.js') }}"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const socket = io();
+  document.querySelectorAll('.board-row').forEach(r => socket.emit('join', { characterId: r.dataset.id }));
+
+  socket.emit('join', { campaignId: "{{ campaign.id }}" });
+  const hoText=document.getElementById('ho-text');
+  document.getElementById('push-handout').onclick=()=>{
+    const v=hoText.value.trim(); if(!v) return;
+    const type=/^https?:\/\/|^\/media\/|^\/maps\/|\.(png|jpg|jpeg|gif|webp)$/i.test(v)?'image':'text';
+    socket.emit('handout',{campaignId:"{{ campaign.id }}",handout:{type,content:v}});
+  };
+  document.getElementById('clear-handout').onclick=()=>socket.emit('handout',{campaignId:"{{ campaign.id }}",handout:{type:null,content:null}});
+  socket.on('character:update', (c) => {
+    const row = document.querySelector(`.board-row[data-id="${c.id}"]`);
+    if (!row) return;
+    row.querySelector('[data-hp]').textContent = c.state.currentHp;
+    row.querySelector('[data-ac]').textContent = c.derived.armorClass.value;
+    const cc = row.querySelector('[data-conds]');
+    const conds = c.state.conditions || [];
+    cc.innerHTML = conds.length ? conds.map(x =>
+      `<span class="cond ${x.kind}" title="${((x.base||'') + (x.note ? ' — ' + x.note : '')).replace(/"/g,'&quot;')}">${x.name}${x.level ? ' <span class=lvl-badge>' + x.level + '</span>' : ''}</span>`
+    ).join('') : '<span class="cond empty">—</span>';
+  });
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body>
+</html>

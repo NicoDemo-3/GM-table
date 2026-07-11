@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Combat — {{ campaign.name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div id="tooltip"></div>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">☾</button>
+<div class="wrap">
+  <div class="masthead">
+    <div class="crest">⚔</div>
+    <div>
+      <h1>Combat Tracker</h1>
+      <div class="sub">{{ campaign.name }} · <a href="/c/{{ campaign.id }}">← dashboard</a>
+        · <a href="/c/{{ campaign.id }}/combat-view" target="_blank">player view ↗</a></div>
+    </div>
+    <div class="actions">
+      <span id="round-badge" class="btn subtle">Round 1</span>
+      <button class="btn ghost" id="btn-roll">Roll initiative</button>
+      <button class="btn" id="btn-next">Next turn ▸</button>
+    </div>
+  </div>
+
+  <div class="sheet-grid">
+    <div>
+      <div class="panel">
+        <span class="eyebrow">Add combatants</span>
+        <div id="add-party"></div>
+        <div style="margin-top:10px"><span class="eyebrow">From bestiary</span><div id="add-best"></div></div>
+        <div style="margin-top:10px"><span class="eyebrow">From NPCs</span><div id="add-npc"></div></div>
+        <div class="efields" style="margin-top:10px">
+          <input id="m-name" placeholder="Custom name" style="flex:2">
+          <input id="m-ac" type="number" placeholder="AC" style="width:60px">
+          <input id="m-hp" type="number" placeholder="HP" style="width:60px">
+          <button class="btn" id="m-add">Add</button>
+        </div>
+        <button class="sec-add" id="btn-clear" style="margin-top:14px">Clear encounter</button>
+      </div>
+      <div class="panel">
+        <span class="eyebrow">Saved encounters</span>
+        <div id="preset-list"></div>
+        <div class="efields" style="margin-top:10px">
+          <input id="preset-name" placeholder="Save current lineup as…" style="flex:1">
+          <button class="btn" id="preset-save">Save</button>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <span class="eyebrow">Initiative order</span>
+        <div id="track"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+window.__CID__ = "{{ campaign.id }}";
+window.__ENCOUNTER__ = {{ campaign.encounter | tojson }};
+window.__PARTY__ = {{ party | tojson }};
+window.__BESTIARY__ = {{ bestiary | tojson }};
+window.__NPCS__ = {{ npcs | tojson }};
+window.__PRESETS__ = {{ presets | tojson }};
+window.__REF__ = {{ reference | tojson }};
+</script>
+<script src="{{ url_for('static', filename='reference.js') }}"></script>
+<script src="{{ url_for('static', filename='combat.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body>
+</html>

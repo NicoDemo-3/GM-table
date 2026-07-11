@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Map &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap" style="max-width:1280px">
+  <div class="masthead"><div class="crest">&#128506;</div>
+    <div><h1>Map Display</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a>
+      &middot; <a href="/c/{{ campaign.id }}/map-view" target="_blank">player view &#8599;</a></div></div>
+    <div class="actions"><label class="btn" for="mapimg">Upload map</label><input id="mapimg" type="file" accept="image/*" hidden></div>
+  </div>
+
+  <div class="sheet-grid" style="grid-template-columns:270px 1fr">
+    <div>
+      <div class="panel">
+        <span class="eyebrow">Fog brush</span>
+        <div class="efields" style="margin-bottom:10px">
+          <button class="btn" id="mode-reveal">Reveal</button>
+          <button class="btn ghost" id="mode-hide">Hide</button>
+        </div>
+        <label class="map-lbl">Brush size <span id="bs-val">2</span></label>
+        <input type="range" id="brush" min="1" max="8" value="2" class="map-slider">
+        <div class="efields" style="margin-top:10px">
+          <button class="btn ghost" id="reveal-all">Reveal all</button>
+          <button class="btn ghost" id="hide-all">Hide all</button>
+        </div>
+        <div style="margin-top:16px"><span class="eyebrow">Fog opacity</span></div>
+        <label class="map-lbl">My view <span id="dmop-val">40%</span></label>
+        <input type="range" id="dmop" min="0" max="100" value="40" class="map-slider">
+        <label class="map-lbl">Player view <span id="plop-val">100%</span></label>
+        <input type="range" id="plop" min="0" max="100" value="100" class="map-slider">
+        <div style="margin-top:16px"><span class="eyebrow">Grid</span></div>
+        <label class="ecbx"><input type="checkbox" id="gridon"> show grid</label>
+        <label class="map-lbl">Cell size <span id="gs-val">70</span>px</label>
+        <input type="range" id="gridsize" min="20" max="160" value="70" class="map-slider">
+      </div>
+
+      <div class="panel">
+        <span class="eyebrow">Tokens</span>
+        <div class="efields" style="margin-bottom:8px">
+          <button class="btn" id="tok-add">+ Add token</button>
+        </div>
+        <div class="efields" style="margin-bottom:8px">
+          <button class="btn ghost" id="tok-party">From party</button>
+          <button class="btn ghost" id="tok-combat">From combat</button>
+        </div>
+        <div id="tok-inspector" class="tok-inspector" style="display:none">
+          <input id="ti-label" placeholder="Label" style="width:100%;margin-bottom:6px">
+          <label class="map-lbl">Shape</label>
+          <select id="ti-shape" style="width:100%">
+            <option value="circle">● Circle</option>
+            <option value="square">■ Square</option>
+            <option value="triangle">▲ Triangle</option>
+            <option value="diamond">◆ Diamond</option>
+            <option value="hexagon">⬡ Hexagon</option>
+            <option value="star">★ Star</option>
+          </select>
+          <div class="efields" style="margin-top:6px">
+            <label class="map-lbl" style="margin:0">Colour</label><input type="color" id="ti-color" value="#7d2230">
+          </div>
+          <label class="map-lbl">Size <span id="ti-size-val">48</span>px</label>
+          <input type="range" id="ti-size" min="20" max="160" value="48" class="map-slider">
+          <label class="btn ghost" for="ti-img" style="width:100%;text-align:center;margin-top:6px">Upload token image</label>
+          <input id="ti-img" type="file" accept="image/*" hidden>
+          <button class="btn subtle" id="ti-clearimg" style="width:100%;margin-top:6px">Clear image</button>
+          <button class="sec-add" id="ti-del" style="margin-top:6px;color:var(--garnet)">Delete token</button>
+        </div>
+        <p class="sec-empty" id="tok-hint">Add a token, then drag it on the map. Click a token to edit it.</p>
+      </div>
+    </div>
+
+    <div class="panel" style="overflow:auto">
+      <div id="noimg" class="sec-empty">Upload a battlemap to begin.</div>
+      <div id="stage" class="map-stage" style="display:none">
+        <canvas id="map" style="display:block;max-width:100%;border-radius:6px"></canvas>
+        <div id="tokens" class="token-layer"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+window.__CID__="{{ campaign.id }}";
+window.__MAP__={{ mapdata | tojson }};
+window.__PARTY__={{ (party if party is defined else []) | tojson }};
+window.__ENCOUNTER__={{ (encounter if encounter is defined else {}) | tojson }};
+</script>
+<script src="{{ url_for('static', filename='map.js') }}"></script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

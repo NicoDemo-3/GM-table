@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ campaign.name }} — GM Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap">
+  <div class="masthead">
+    <div class="crest">{{ campaign.name[0]|upper }}</div>
+    <div>
+      <h1>{{ campaign.name }}</h1>
+      <div class="sub">Game master's dashboard &middot; <a href="/">all campaigns</a></div>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" href="/c/{{ campaign.id }}/overview" target="_blank">DM overview &#8599;</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/play" target="_blank">Player portal &#8599;</a>
+      <label class="btn" for="import">Import character</label>
+      <input id="import" type="file" accept="application/json" hidden>
+    </div>
+  </div>
+
+  <div class="panel">
+    <span class="eyebrow">Tools</span>
+    <div class="tool-links">
+      <a class="btn ghost" href="/c/{{ campaign.id }}/canvas">&#129518; Canvas</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/combat">&#9876; Combat Tracker</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/bestiary">&#128009; Bestiary</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/npcs">&#128100; NPCs</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/tables">&#127922; Roll Tables</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/shop">&#127978; Shop</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/world">&#9728; World &amp; Time</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/map">&#128506; Map Display</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/sounds">&#128266; Soundboard</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/widgets">&#129513; Widget Library</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/builder">&#128208; Sheet Builder</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/party-cards" target="_blank">&#127183; Party Cards</a>
+      <a class="btn ghost" href="/c/{{ campaign.id }}/compendium">&#128218; Compendium</a>
+      <a class="btn ghost" href="/content" target="_blank">&#128214; Content &amp; rules</a>
+      <a class="btn ghost" href="/reference?c={{ campaign.id }}" target="_blank">&#128218; Reference Library</a>
+      <a class="btn ghost" href="/dm-links?c={{ campaign.id }}" target="_blank">&#128279; DM Links</a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="sec-head"><span class="eyebrow">Party Manager &mdash; tint, bench &amp; split</span>
+      <span style="font-size:12px;color:var(--ink-soft)">Active group:
+        <select id="active-group"><option>All</option><option>A</option><option>B</option></select></span></div>
+    {% if characters %}
+    <div class="roster" id="party-mgr">
+      {% for c in characters %}
+      <div class="panel char-card" data-id="{{ c.id }}">
+        <a href="/sheet/{{ c.id }}" style="display:flex;gap:12px;align-items:center;text-decoration:none;color:inherit;flex:1">
+          {% if c.definition.portrait %}<img src="{{ c.definition.portrait }}" alt="">{% endif %}
+          <div>
+            <div class="display" style="font-size:19px">{{ c.definition.name }}</div>
+            <div class="meta numeral">AC {{ c.derived.armorClass.value }} &middot; HP {{ c.state.currentHp }}/{{ c.derived.maxHp.value }}</div>
+          </div>
+        </a>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+          <div class="tints" data-id="{{ c.id }}"></div>
+          <label class="ecbx"><input type="checkbox" class="bench" data-id="{{ c.id }}"> bench</label>
+          <select class="grp" data-id="{{ c.id }}" style="font-size:11px"><option>All</option><option>A</option><option>B</option></select>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">No characters yet. Import a Hero's Diary export to seed your first sheet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const CID = "{{ campaign.id }}";
+const socket = io();
+let party = {{ campaign.party | tojson }};
+party.tints = party.tints || {}; party.benched = party.benched || []; party.split = party.split || {active:"All",groups:{}}; party.split.groups = party.split.groups || {};
+const TINTS = ['', '#7d2230', '#9a7b2e', '#4d5b48', '#3f6fd1', '#7a3f8f', '#b5482e'];
+
+socket.on('connect', () => socket.emit('join', { campaignId: CID }));
+socket.on('party:update', (m) => { party = m.party; party.tints=party.tints||{}; party.benched=party.benched||[]; party.split=party.split||{active:"All",groups:{}}; party.split.groups=party.split.groups||{}; renderParty(); });
+
+function renderParty() {
+  document.querySelectorAll('#party-mgr .char-card').forEach((card) => {
+    const id = card.dataset.id;
+    card.style.opacity = party.benched.includes(id) ? '.45' : '1';
+    card.style.borderLeft = '4px solid ' + (party.tints[id] || 'transparent');
+    const sw = card.querySelector('.tints');
+    sw.innerHTML = TINTS.map((t) =>
+      `<span class="swatch ${party.tints[id] === t ? 'sel' : ''}" style="background:${t || 'var(--vellum-2)'}" data-t="${t}"></span>`).join('');
+    sw.querySelectorAll('.swatch').forEach((s) => s.addEventListener('click', () => { party.tints[id] = s.dataset.t; commit(); }));
+    const cb = card.querySelector('.bench'); cb.checked = party.benched.includes(id);
+    cb.onchange = () => { party.benched = party.benched.filter((x) => x !== id); if (cb.checked) party.benched.push(id); commit(); };
+    const gp = card.querySelector('.grp'); gp.value = party.split.groups[id] || 'All';
+    gp.onchange = () => { party.split.groups[id] = gp.value; commit(); };
+  });
+}
+function commit() { socket.emit('party:update', { campaignId: CID, party }); renderParty(); }
+
+document.getElementById('import').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  const res = await fetch('/api/import?campaign=' + CID, { method: 'POST', body: fd });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Import failed.'); return; }
+  location.href = '/sheet/' + data.id;
+});
+const ag=document.getElementById('active-group'); ag.value = party.split.active || 'All';
+ag.onchange = () => { party.split.active = ag.value; commit(); };
+renderParty();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body>
+</html>

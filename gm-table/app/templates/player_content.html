@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player Content — {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap">
+  <div class="masthead"><div class="crest">&#127918;</div>
+    <div><h1>Player Content</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a> &middot; <a href="/c/{{ campaign.id }}/play" target="_blank">open player portal &#8599;</a></div></div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">D&D 2024 rules (SRD 5.2.1)</span>
+    <p class="sub">One click loads the official Creative Commons rules glossary — 160 terms (actions, conditions, hazards, and rules like Climbing, Cover, Long Rest) — straight into every player's sidebar under <b>Rules</b>. The required attribution is added automatically. This is the easiest way to give your players a rules reference.</p>
+    <div class="efields" style="align-items:center">
+      <button class="btn" id="load-srd">Load SRD 5.2.1 glossary</button>
+      <span class="sub" id="srd-msg">Free &amp; legal — Creative Commons (CC-BY-4.0).</span>
+    </div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">Your own player rules</span>
+    <p class="sub">Add house rules or anything else. Import Markdown (a <code>## Title</code> line then the text below it) or JSON (<code>[{"title","text"}]</code>), or just type one in. Players can read these but never edit them.</p>
+    <textarea id="rules-in" rows="8" placeholder="## Climbing&#10;While climbing, each foot of movement costs 1 extra foot...&#10;&#10;## Long Rest&#10;A long rest is a period of extended downtime..." style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:10px;font:inherit;background:var(--vellum-2);color:var(--ink)"></textarea>
+    <div class="efields" style="margin-top:8px;align-items:center">
+      <input type="file" id="rules-file" accept=".md,.json,.txt" style="flex:1">
+      <label class="ecbx"><input type="checkbox" id="rules-replace"> replace existing</label>
+      <button class="btn" id="rules-import">Import rules</button>
+      <span class="sub" id="rules-msg"></span>
+    </div>
+    <div id="rules-list" style="margin-top:12px"></div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">Pushed to players</span>
+    <p class="sub">Read-only content you've sent (shops from the Shop Generator, notes below). Players see these in their "From the DM" tab and can't edit or regenerate them.</p>
+    <div class="efields">
+      <input id="note-title" placeholder="Note title" style="flex:1">
+      <button class="btn ghost" id="push-note">Push a note</button>
+    </div>
+    <textarea id="note-body" rows="3" placeholder="A note to push to players (read-only)…" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:6px;padding:10px;font:inherit;background:var(--vellum-2);color:var(--ink)"></textarea>
+    <div id="pushed-list" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+const CID="{{ campaign.id }}";
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+async function loadAll(){
+  const d=await (await fetch(`/api/campaign/${CID}/player-data`)).json();
+  document.getElementById('rules-list').innerHTML = d.rules.length
+    ? d.rules.map(r=>`<div class="tool-row"><span class="grow"><b>${esc(r.title)}</b><div class="sub" style="font-size:12px">${esc((r.text||'').slice(0,90))}${r.text&&r.text.length>90?'…':''}</div></span><button class="erm" data-r="${r.id}">&times;</button></div>`).join('')
+    : '<p class="empty">No rules imported yet.</p>';
+  document.getElementById('pushed-list').innerHTML = d.handouts.length
+    ? d.handouts.slice().reverse().map(h=>{
+        let body='';
+        if(h.kind==='shop'&&h.payload&&h.payload.items){
+          body='<table class="g-shop">'+h.payload.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="g-price">${esc(i.price)}</td><td class="g-qty">x${esc(i.qty)}</td></tr>`).join('')+'</table>';
+        } else if(h.payload&&h.payload.text){ body=`<div class="g-text">${esc(h.payload.text).replace(/\n/g,'<br>')}</div>`; }
+        return `<div class="g-item" style="margin-bottom:6px"><div class="tool-row" style="border:none"><span class="grow"><b>${esc(h.title)}</b> <span class="sub" style="font-size:11px;text-transform:uppercase">${esc(h.kind)}</span></span><button class="btn ghost" data-toggle="${h.id}">view</button><button class="erm" data-h="${h.id}" title="Remove from players">&times;</button></div><div id="hb-${h.id}" style="display:none">${body}</div></div>`;
+      }).join('')
+    : '<p class="empty">Nothing pushed yet. Push shops from the Shop page, or a note below.</p>';
+  document.querySelectorAll('[data-r]').forEach(b=>b.onclick=async()=>{await fetch(`/api/campaign/${CID}/player-rules/${b.dataset.r}`,{method:'DELETE'});loadAll();});
+  document.querySelectorAll('[data-h]').forEach(b=>b.onclick=async()=>{if(!confirm('Remove this from the player guide?'))return;await fetch(`/api/campaign/${CID}/push-handout/${b.dataset.h}`,{method:'DELETE'});loadAll();});
+  document.querySelectorAll('[data-toggle]').forEach(b=>b.onclick=()=>{const el=document.getElementById('hb-'+b.dataset.toggle);el.style.display=el.style.display==='none'?'block':'none';});
+}
+async function importRules(text){
+  const replace=document.getElementById('rules-replace').checked;
+  const r=await fetch(`/api/campaign/${CID}/player-rules`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,replace})});
+  const d=await r.json(); document.getElementById('rules-msg').textContent=r.ok?`Added ${d.added} (now ${d.total}).`:(d.error||'Failed'); loadAll();
+}
+document.getElementById('rules-import').onclick=()=>{const t=document.getElementById('rules-in').value.trim();if(t)importRules(t);};
+document.getElementById('load-srd').onclick=async()=>{
+  if(!confirm('Load the SRD 5.2.1 rules glossary (160 terms) into player rules? The CC-BY-4.0 attribution is added automatically.')) return;
+  const r=await fetch(`/api/campaign/${CID}/player-rules/load-srd`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+  const d=await r.json(); document.getElementById('srd-msg').textContent=r.ok?`Loaded! ${d.added} rules are now in every player's sidebar.`:'Failed.'; loadAll();
+};
+document.getElementById('rules-file').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{document.getElementById('rules-in').value=rd.result;};rd.readAsText(f);};
+document.getElementById('push-note').onclick=async()=>{
+  const title=document.getElementById('note-title').value.trim()||'Note', body=document.getElementById('note-body').value.trim();
+  if(!body)return;
+  await fetch(`/api/campaign/${CID}/push-handout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'note',title,payload:{text:body}})});
+  document.getElementById('note-title').value='';document.getElementById('note-body').value='';loadAll();
+};
+loadAll();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body></html>

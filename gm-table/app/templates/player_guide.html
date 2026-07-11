@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Player Guide — {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap">
+  <div class="masthead"><div class="crest">&#128214;</div>
+    <div><h1>Player Guide</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}/play">&larr; the party</a> <span id="mychar-link"></span></div></div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">Rules</span>
+    <input class="g-search" id="rule-search" placeholder="Search rules…">
+    <div id="rules-acc" class="g-acc"></div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">From the DM</span>
+    <div id="pushed-acc" class="g-acc"></div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">My Notes <span class="sub" style="text-transform:none;letter-spacing:0">— private to you, saved on this device</span></span>
+    <textarea id="notepad" placeholder="Your private notes…" style="width:100%;min-height:40vh;border:1px solid var(--rule);border-radius:8px;padding:12px;font:inherit;background:var(--vellum-2);color:var(--ink);resize:vertical"></textarea>
+    <div class="sub" id="note-saved" style="height:16px"></div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const CID="{{ campaign.id }}";
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+let RULES=[], HANDOUTS=[];
+
+// remember the character the player is using (set from sheet page) for a quick link
+try{const mc=JSON.parse(localStorage.getItem('playerChar:'+CID)||'null');
+  if(mc&&mc.id) document.getElementById('mychar-link').innerHTML=`&middot; <a href="/sheet/${esc(mc.id)}">${esc(mc.name)}'s sheet &rarr;</a>`;}catch(e){}
+
+function renderRules(){
+  const attr=RULES.find(r=>r.id==='pr_srd_attr');
+  const rest=RULES.filter(r=>r.id!=='pr_srd_attr').slice().sort((a,b)=>a.title.localeCompare(b.title));
+  let html='';
+  if(attr) html+=`<details class="g-item g-attr"><summary>&#9432; ${esc(attr.title)}</summary><div class="g-text">${esc(attr.text).replace(/\n/g,'<br>')}</div></details>`;
+  html+=rest.length?rest.map(r=>`<details class="g-item"><summary>${esc(r.title)}</summary><div class="g-text">${esc(r.text).replace(/\n/g,'<br>')}</div></details>`).join('')
+    :'<p class="empty">No rules shared yet — ask your DM.</p>';
+  document.getElementById('rules-acc').innerHTML=html;
+}
+function renderPushed(){
+  let hidden=[]; try{hidden=JSON.parse(localStorage.getItem('hiddenHandouts:'+CID)||'[]');}catch(e){}
+  const visible=HANDOUTS.filter(h=>!hidden.includes(h.id));
+  const hiddenCount=HANDOUTS.length-visible.length;
+  let html = visible.length
+    ? visible.slice().reverse().map(h=>{
+        let body='';
+        if(h.kind==='shop'&&h.payload&&h.payload.items){
+          body='<table class="g-shop">'+h.payload.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="g-price">${esc(i.price)}</td><td class="g-qty">x${esc(i.qty)}</td></tr>`).join('')+'</table>';
+        } else if(h.payload&&h.payload.text){ body=`<div class="g-text">${esc(h.payload.text).replace(/\n/g,'<br>')}</div>`; }
+        else if(typeof h.payload==='string'){ body=`<div class="g-text">${esc(h.payload)}</div>`; }
+        return `<details class="g-item" open><summary>${esc(h.title)} <span class="sub" style="font-size:11px;text-transform:uppercase">${esc(h.kind)}</span><button class="g-hide" data-hide="${h.id}" title="Hide from my view">✕</button></summary>${body}</details>`;
+      }).join('')
+    : '<p class="empty">Nothing from the DM yet.</p>';
+  if(hiddenCount) html+=`<button class="btn subtle" id="show-hidden" style="margin-top:8px">Show ${hiddenCount} hidden item${hiddenCount===1?'':'s'}</button>`;
+  document.getElementById('pushed-acc').innerHTML=html;
+  document.querySelectorAll('[data-hide]').forEach(b=>b.onclick=e=>{
+    e.preventDefault();e.stopPropagation();
+    let hid=[];try{hid=JSON.parse(localStorage.getItem('hiddenHandouts:'+CID)||'[]');}catch(x){}
+    hid.push(b.dataset.hide); localStorage.setItem('hiddenHandouts:'+CID,JSON.stringify(hid)); renderPushed();
+  });
+  const sh=document.getElementById('show-hidden');
+  if(sh) sh.onclick=()=>{localStorage.removeItem('hiddenHandouts:'+CID);renderPushed();};
+}
+async function load(){
+  try{const d=await(await fetch(`/api/campaign/${CID}/player-data`)).json();RULES=d.rules||[];HANDOUTS=d.handouts||[];}catch(e){}
+  renderRules(); renderPushed();
+}
+document.getElementById('rule-search').oninput=e=>{
+  const q=e.target.value.toLowerCase();
+  document.querySelectorAll('#rules-acc .g-item').forEach(it=>it.style.display=it.textContent.toLowerCase().includes(q)?'':'none');
+};
+
+// private notes
+const noteKey='playerNotes:'+CID;
+const pad=document.getElementById('notepad'); pad.value=localStorage.getItem(noteKey)||'';
+let t; pad.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>{localStorage.setItem(noteKey,pad.value);const s=document.getElementById('note-saved');s.textContent='Saved';setTimeout(()=>s.textContent='',1200);},400);});
+
+// live updates
+try{const sock=io();sock.emit('join',{campaignId:CID});
+  sock.on('player:rules',m=>{RULES=m.rules||[];renderRules();});
+  sock.on('player:handouts',m=>{HANDOUTS=m.handouts||[];renderPushed();});}catch(e){}
+
+load();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__PLAYER_CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='player-sidebar.js') }}"></script>
+</body></html>

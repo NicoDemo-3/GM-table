@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sheet Builder &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap" style="max-width:1100px">
+  <div class="masthead"><div class="crest">&#129513;</div>
+    <div><h1>Sheet Builder</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a>
+      &middot; <a href="/c/{{ campaign.id }}/party-cards" target="_blank">view party cards &#8599;</a></div></div>
+    <div class="actions"><a class="btn ghost" id="preview" href="#" target="_blank">Preview ↗</a><button class="btn" id="save">Save layout</button></div>
+  </div>
+
+  <div class="panel">
+    <div class="ref-snav" id="cardtabs"></div>
+    <p class="sub" style="margin-top:0">Click a widget to drop it on the card, then drag to position. The Widget Library is the source of every stat — system widgets compute live; custom ones are yours.</p>
+  </div>
+
+  <div class="sheet-grid" style="grid-template-columns:240px 1fr">
+    <div class="panel">
+      <span class="eyebrow">Widgets</span>
+      <div id="palette"></div>
+    </div>
+    <div class="panel">
+      <span class="eyebrow">Card canvas</span>
+      <div id="canvas" class="bld-canvas"></div>
+    </div>
+  </div>
+</div>
+<script>
+window.__CID__="{{ campaign.id }}";
+window.__LIB__={{ library | tojson }};
+window.__LAYOUTS__={{ layouts | tojson }};
+window.__CARDS__={{ cards | tojson }};
+</script>
+<script src="{{ url_for('static', filename='builder.js') }}"></script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

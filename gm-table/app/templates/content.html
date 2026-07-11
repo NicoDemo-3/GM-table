@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Content & Rules — DM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">☾</button>
+<div class="wrap">
+  <div class="masthead">
+    <div class="crest">📚</div>
+    <div><h1>Content &amp; Rules</h1><div class="sub">XP thresholds · level-up content catalog</div></div>
+    <div class="actions"><a class="btn subtle" href="/">← Dashboard</a></div>
+  </div>
+
+  <!-- XP thresholds -->
+  <div class="panel">
+    <span class="eyebrow">XP thresholds — minimum XP for each level</span>
+    <p style="color:var(--ink-soft);font-size:13px">Edit these to match how your table awards XP (or use milestone-style numbers). Applies to every character.</p>
+    <div id="thresholds" class="thresh-grid">
+      {% for lvl in range(1, 21) %}
+      <label class="thresh">L{{ lvl }}
+        <input type="number" data-lvl="{{ lvl }}" value="{{ thresholds.get(lvl|string, thresholds.get(lvl, default_thresholds[lvl])) }}">
+      </label>
+      {% endfor %}
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn" id="save-thresh">Save thresholds</button>
+      <button class="btn ghost" id="reset-thresh">Reset to 2024 default</button>
+      <span id="thresh-msg" style="align-self:center;color:var(--sage);font-size:13px"></span>
+    </div>
+  </div>
+
+  <!-- content import -->
+  <div class="panel">
+    <span class="eyebrow">Import content — feats, spells, features</span>
+    <p style="color:var(--ink-soft);font-size:13px">
+      The built-in catalog ships the SRD feats only. To add your books' full content, have your
+      local LLM produce JSON in the shape below (reading your own copies), then paste or upload it here.
+    </p>
+    <details style="margin-bottom:10px">
+      <summary style="cursor:pointer;font-weight:600;color:var(--garnet)">Show the import schema &amp; a prompt you can give your LLM</summary>
+      <pre class="schema">{
+  "feats": [
+    { "name": "Sentinel", "category": "General",
+      "asi": "STR_or_DEX",            // or "choice", or null
+      "repeatable": false,
+      "text": "Plain-English summary of what the feat does." }
+  ],
+  "spells": [
+    { "name": "Fireball", "level": 3, "school": "Evocation",
+      "classes": ["Wizard","Sorcerer"],
+      "text": "What the spell does." }
+  ],
+  "features": [
+    { "name": "Action Surge", "class": "Fighter", "level": 2,
+      "text": "What the feature does." }
+  ]
+}</pre>
+      <p style="color:var(--ink-soft);font-size:12px">Suggested LLM prompt: "From the attached rulebook, output ONLY valid JSON matching this schema, summarizing each feat/spell/feature's effect in 1–2 plain sentences. Do not copy the book's exact wording."</p>
+    </details>
+    <textarea id="import-json" placeholder='Paste content JSON here…' style="width:100%;min-height:140px;font-family:monospace;font-size:12px;border:1px solid var(--rule);border-radius:6px;padding:10px;background:var(--vellum-2);color:var(--ink)"></textarea>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label class="btn subtle" for="import-file">Upload .json</label>
+      <input id="import-file" type="file" accept="application/json" hidden>
+      <label style="font-size:13px"><input type="radio" name="mode" value="merge" checked> Merge</label>
+      <label style="font-size:13px"><input type="radio" name="mode" value="replace"> Replace all</label>
+      <button class="btn" id="do-import">Import</button>
+      <span id="import-msg" style="font-size:13px"></span>
+    </div>
+  </div>
+
+  <!-- catalog view -->
+  <div class="panel">
+    <span class="eyebrow">Current catalog</span>
+    <div id="catalog">
+      <p style="color:var(--ink-soft);font-size:13px">
+        {{ catalog.counts.feats }} feats ({{ catalog.counts.builtinFeats }} built-in SRD) ·
+        {{ catalog.counts.spells }} spells · {{ catalog.counts.features }} features
+      </p>
+      <details><summary style="cursor:pointer;font-weight:600">Feats ({{ catalog.counts.feats }})</summary>
+        <div class="cat-list">
+        {% for f in catalog.feats %}
+          <div class="cat-item"><b>{{ f.name }}</b> <span class="tag">{{ f.category }}{% if f.source=='imported' %} · imported{% endif %}</span><div class="ci-text">{{ f.text }}</div></div>
+        {% endfor %}
+        </div>
+      </details>
+      {% if catalog.spells %}
+      <details><summary style="cursor:pointer;font-weight:600">Spells ({{ catalog.counts.spells }})</summary>
+        <div class="cat-list">
+        {% for s in catalog.spells %}<div class="cat-item"><b>{{ s.name }}</b> <span class="tag">Lvl {{ s.level }} {{ s.school }}</span><div class="ci-text">{{ s.text }}</div></div>{% endfor %}
+        </div>
+      </details>
+      {% endif %}
+      {% if catalog.features %}
+      <details><summary style="cursor:pointer;font-weight:600">Features ({{ catalog.counts.features }})</summary>
+        <div class="cat-list">
+        {% for ft in catalog.features %}<div class="cat-item"><b>{{ ft.name }}</b> <span class="tag">{{ ft.class }}{% if ft.level %} L{{ ft.level }}{% endif %}</span><div class="ci-text">{{ ft.text }}</div></div>{% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>
+const DEFAULT_TH = {{ default_thresholds | tojson }};
+document.getElementById('save-thresh').addEventListener('click', async () => {
+  const th = {};
+  document.querySelectorAll('#thresholds input').forEach(i => th[i.dataset.lvl] = Number(i.value) || 0);
+  const r = await fetch('/api/settings/thresholds', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({thresholds: th})});
+  document.getElementById('thresh-msg').textContent = r.ok ? 'Saved.' : 'Error saving.';
+  setTimeout(()=>document.getElementById('thresh-msg').textContent='', 2500);
+});
+document.getElementById('reset-thresh').addEventListener('click', () => {
+  document.querySelectorAll('#thresholds input').forEach(i => i.value = DEFAULT_TH[i.dataset.lvl]);
+});
+
+const fileInp = document.getElementById('import-file');
+fileInp.addEventListener('change', () => {
+  const f = fileInp.files[0]; if (!f) return;
+  const r = new FileReader(); r.onload = () => document.getElementById('import-json').value = r.result; r.readAsText(f);
+});
+document.getElementById('do-import').addEventListener('click', async () => {
+  const msg = document.getElementById('import-msg');
+  let body;
+  try { body = JSON.parse(document.getElementById('import-json').value); }
+  catch (e) { msg.style.color = 'var(--garnet)'; msg.textContent = 'Invalid JSON.'; return; }
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const r = await fetch('/api/content/import?mode=' + mode, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const rep = await r.json();
+  if (!r.ok) { msg.style.color='var(--garnet)'; msg.textContent = rep.error || 'Import failed.'; return; }
+  msg.style.color = 'var(--sage)';
+  msg.textContent = `Added — feats +${rep.feats.added}, spells +${rep.spells.added}, features +${rep.features.added}. Reloading…`;
+  setTimeout(()=>location.reload(), 1200);
+});
+</script>
+</body>
+</html>

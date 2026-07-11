@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shop Generator — {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap">
+  <div class="masthead"><div class="crest">&#127978;</div>
+    <div><h1>Shop Generator</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a></div></div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">Build inventory</span>
+    <div class="efields">
+      <input id="shopname" placeholder="Shop name (auto-generated — editable)" style="flex:2">
+      <button class="btn ghost" id="genname" title="Generate a new name">🎲</button>
+      <select id="type">{% for t in shop_types %}<option>{{ t }}</option>{% endfor %}</select>
+      <select id="econ">{% for e in economies %}<option {% if e=='Average' %}selected{% endif %}>{{ e }}</option>{% endfor %}</select>
+      <input id="count" type="number" min="1" max="20" value="8" style="width:64px" title="How many items">
+      <button class="btn" id="gen">Generate</button>
+      <button class="btn ghost" id="addrow">+ Add item</button>
+    </div>
+    <div id="rows" style="margin-top:12px"></div>
+    <div class="efields" style="margin-top:12px;align-items:center">
+      <button class="btn" id="push">Push to players (read-only)</button>
+      <span class="sub" id="pushmsg"></span>
+    </div>
+    <div style="margin-top:14px"><span class="eyebrow">Pushed shops (live in player guide)</span>
+      <div id="pushed-shops"></div>
+    </div>
+  </div>
+
+  <div class="panel"><span class="eyebrow">Currency</span>
+    <p class="sub">Prices are stored in the smallest unit so there's no rounding. Edit names, codes, and how many base units each is worth. Add custom currencies freely.</p>
+    <div id="curlist"></div>
+    <div class="efields" style="margin-top:8px">
+      <button class="btn ghost" id="addcur">+ Add currency</button>
+      <button class="btn" id="savecur">Save currency</button>
+      <span class="sub" id="curmsg"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const CID="{{ campaign.id }}";
+let CUR={{ currency | tojson }};
+let rows=[];
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function inBase(code){const u=CUR.units.find(u=>u.code===code);return u?(u.inBase||1):1;}
+function fmtBase(base){
+  base=Math.round(base); if(!base){const u=CUR.units.filter(u=>u.inBreakdown!==false); return '0 '+((u.length?u:CUR.units)[ (u.length?u:CUR.units).length-1 ].code);}
+  const sorted=[...CUR.units].sort((a,b)=>b.inBase-a.inBase); let rem=base, parts=[];
+  for(const u of sorted){if(u.inBreakdown===false)continue; const w=u.inBase||1; if(w<=0)continue; const n=Math.floor(rem/w); rem-=n*w; if(n)parts.push(n+' '+u.code);}
+  return parts.length?parts.join(', '):'0 '+CUR.base;
+}
+function parsePrice(str){
+  str=String(str).trim(); if(!str) return 0;
+  let total=0, matched=false;
+  str.replace(/(\d+(?:\.\d+)?)\s*([a-zA-Z]+)/g,(_,n,code)=>{total+=parseFloat(n)*inBase(code.toLowerCase());matched=true;return '';});
+  if(!matched){const n=parseFloat(str); return isNaN(n)?0:Math.round(n);}
+  return Math.round(total);
+}
+
+function renderRows(){
+  document.getElementById('rows').innerHTML = rows.length ? rows.map((r,i)=>`
+    <div class="tool-row">
+      <input class="r-name" data-i="${i}" value="${esc(r.name)}" style="flex:2" placeholder="Item">
+      <input class="r-price" data-i="${i}" value="${esc(fmtBase(r.priceBase))}" style="width:140px" title="e.g. 2 gp, 15 sp">
+      <input class="r-qty" data-i="${i}" type="number" min="0" value="${r.qty}" style="width:64px" title="Quantity">
+      <button class="erm r-del" data-i="${i}">&times;</button>
+    </div>`).join('') : '<p class="empty">No items yet — generate or add some.</p>';
+  document.querySelectorAll('.r-name').forEach(el=>el.onchange=()=>rows[+el.dataset.i].name=el.value);
+  document.querySelectorAll('.r-price').forEach(el=>el.onchange=()=>{rows[+el.dataset.i].priceBase=parsePrice(el.value);renderRows();});
+  document.querySelectorAll('.r-qty').forEach(el=>el.onchange=()=>rows[+el.dataset.i].qty=Math.max(0,parseInt(el.value)||0));
+  document.querySelectorAll('.r-del').forEach(el=>el.onclick=()=>{rows.splice(+el.dataset.i,1);renderRows();});
+}
+document.getElementById('addrow').onclick=()=>{rows.push({name:'New item',priceBase:inBase('gp')||100,qty:1});renderRows();};
+document.getElementById('gen').onclick=async()=>{
+  const t=document.getElementById('type').value,e=document.getElementById('econ').value,c=document.getElementById('count').value;
+  const r=await fetch(`/api/gen/shop?type=${encodeURIComponent(t)}&economy=${encodeURIComponent(e)}&count=${c}`);
+  const d=await r.json(); rows=d.items.map(i=>({name:i.name,priceBase:i.priceBase,qty:i.qty}));
+  document.getElementById('shopname').value=d.name||d.type;
+  renderRows();
+};
+document.getElementById('genname').onclick=async()=>{
+  const t=document.getElementById('type').value;
+  const r=await fetch(`/api/gen/shop-name?type=${encodeURIComponent(t)}`); const d=await r.json();
+  document.getElementById('shopname').value=d.name;
+};
+document.getElementById('push').onclick=async()=>{
+  if(!rows.length){document.getElementById('pushmsg').textContent='Nothing to push.';return;}
+  const payload={items:rows.map(r=>({name:r.name,price:fmtBase(r.priceBase),qty:r.qty}))};
+  const r=await fetch(`/api/campaign/${CID}/push-handout`,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({kind:'shop',title:document.getElementById('shopname').value||'Shop',payload})});
+  const d=await r.json(); document.getElementById('pushmsg').textContent=r.ok?`Pushed to players (${d.count} live).`:'Failed.'; loadPushed();
+};
+async function loadPushed(){
+  const d=await(await fetch(`/api/campaign/${CID}/player-data`)).json();
+  const shops=(d.handouts||[]).filter(h=>h.kind==='shop');
+  document.getElementById('pushed-shops').innerHTML = shops.length
+    ? shops.slice().reverse().map(h=>`<div class="tool-row"><span class="grow"><b>${esc(h.title)}</b> <span class="sub">${(h.payload&&h.payload.items?h.payload.items.length:0)} items</span></span><button class="btn ghost" data-load="${h.id}">load to edit</button><button class="erm" data-del="${h.id}" title="Remove from players">&times;</button></div>`).join('')
+    : '<p class="empty">No shops pushed yet.</p>';
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('Remove this shop from the player guide?'))return;await fetch(`/api/campaign/${CID}/push-handout/${b.dataset.del}`,{method:'DELETE'});loadPushed();});
+  document.querySelectorAll('[data-load]').forEach(b=>b.onclick=async()=>{
+    const h=shops.find(x=>x.id===b.dataset.load); if(!h||!h.payload)return;
+    document.getElementById('shopname').value=h.title;
+    rows=h.payload.items.map(i=>({name:i.name,priceBase:parsePrice(i.price),qty:i.qty})); renderRows();
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+}
+
+function renderCur(){
+  document.getElementById('curlist').innerHTML = CUR.units.map((u,i)=>`
+    <div class="tool-row">
+      <input class="c-name" data-i="${i}" value="${esc(u.name)}" placeholder="Name" style="flex:2">
+      <input class="c-code" data-i="${i}" value="${esc(u.code)}" placeholder="code" style="width:80px">
+      <input class="c-base" data-i="${i}" type="number" min="1" value="${u.inBase}" style="width:110px" title="Worth in base units">
+      <label class="ecbx" title="Use this coin when breaking down prices (turn off for electrum etc.)"><input type="checkbox" class="c-bd" data-i="${i}" ${u.inBreakdown!==false?'checked':''}> in prices</label>
+      <span class="sub" style="width:70px">${u.code===CUR.base?'(base)':''}</span>
+      <button class="erm c-del" data-i="${i}">&times;</button>
+    </div>`).join('');
+  document.querySelectorAll('.c-name').forEach(el=>el.onchange=()=>CUR.units[+el.dataset.i].name=el.value);
+  document.querySelectorAll('.c-code').forEach(el=>el.onchange=()=>{CUR.units[+el.dataset.i].code=el.value.trim();renderCur();renderRows();});
+  document.querySelectorAll('.c-base').forEach(el=>el.onchange=()=>{CUR.units[+el.dataset.i].inBase=Math.max(1,parseInt(el.value)||1);renderRows();});
+  document.querySelectorAll('.c-bd').forEach(el=>el.onchange=()=>{CUR.units[+el.dataset.i].inBreakdown=el.checked;renderRows();});
+  document.querySelectorAll('.c-del').forEach(el=>el.onclick=()=>{if(CUR.units.length<=1)return;CUR.units.splice(+el.dataset.i,1);renderCur();renderRows();});
+}
+document.getElementById('addcur').onclick=()=>{CUR.units.push({code:'new',name:'New Currency',inBase:1});renderCur();};
+document.getElementById('savecur').onclick=async()=>{
+  const minU=[...CUR.units].sort((a,b)=>a.inBase-b.inBase)[0];
+  CUR.base=minU?minU.code:'cp';
+  const r=await fetch(`/api/campaign/${CID}/currency`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(CUR)});
+  CUR=await r.json(); document.getElementById('curmsg').textContent='Saved.'; renderCur(); renderRows();
+};
+
+renderCur(); renderRows(); loadPushed();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body></html>

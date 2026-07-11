@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Table — Campaigns</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">☾</button>
+<div class="wrap">
+  <div class="portal-hero">
+    <h1>The Table</h1>
+    <p>Your campaigns. Each one keeps its own party, widgets, and settings.</p>
+  </div>
+
+  <div class="pick-grid">
+    {% for c in campaigns %}
+    <div class="pick" style="position:relative">
+      <a href="/c/{{ c.id }}" style="text-decoration:none;color:inherit">
+        <div class="crest" style="margin:0 auto">{{ c.name[0]|upper }}</div>
+        <div class="pname">{{ c.name }}</div>
+        <div class="pmeta">{{ c.system }}{% if c.widgets %} · {{ c.widgets|length }} custom widget(s){% endif %}</div>
+      </a>
+      <div style="display:flex;gap:6px;justify-content:center;margin-top:10px">
+        <a class="btn subtle" href="/api/campaign/{{ c.id }}/export">Export</a>
+        <button class="btn subtle" onclick="delCampaign('{{ c.id }}','{{ c.name }}')">Delete</button>
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="pick" style="border-style:dashed;display:flex;flex-direction:column;justify-content:center;gap:10px">
+      <input id="newname" placeholder="New campaign name" style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;font:inherit;background:var(--vellum-2);color:var(--ink)">
+      <button class="btn" onclick="createCampaign()">Create campaign</button>
+      <label class="btn ghost" for="impc" style="text-align:center">Import campaign</label>
+      <input id="impc" type="file" accept="application/json" hidden>
+    </div>
+  </div>
+</div>
+
+<script>
+async function createCampaign() {
+  const name = document.getElementById('newname').value.trim() || 'New Campaign';
+  const r = await fetch('/api/campaign', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name}) });
+  const d = await r.json();
+  if (d.id) location.href = '/c/' + d.id;
+}
+async function delCampaign(id, name) {
+  if (!confirm('Delete "'+name+'" and all its characters? This cannot be undone.')) return;
+  await fetch('/api/campaign/'+id, { method:'DELETE' });
+  location.reload();
+}
+document.getElementById('impc').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  const r = await fetch('/api/campaign/import', { method:'POST', body: fd });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || 'Import failed.'); return; }
+  location.href = '/c/' + d.id;
+});
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body>
+</html>

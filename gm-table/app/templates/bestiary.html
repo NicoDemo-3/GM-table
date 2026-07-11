@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bestiary — {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .beast-row { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:4px; cursor:pointer; border:1px solid transparent; }
+    .beast-row:hover { background: var(--vellum-2); }
+    .beast-row.sel { background: var(--vellum-2); border-color: var(--rule); }
+    .beast-row .bname { flex:1; font-weight:500; }
+    .beast-row .btag { font-size:11px; color:var(--ink-soft); white-space:nowrap; }
+    .beast-meta { color: var(--ink-soft); font-style: italic; margin: 2px 0 12px; }
+    .stat-line { padding: 3px 0; font-size: 13px; }
+    .stat-line b { font-weight: 600; }
+    .block-text { white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; }
+    .block-text .tname { font-weight: 600; font-style: italic; }
+    .detail-actions { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+    .efld { display:flex; flex-direction:column; gap:3px; }
+    .efld label { font: 600 10px "Inter"; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft); }
+    .efld input, .efld textarea { border:1px solid var(--rule); border-radius:4px; padding:6px; background:var(--vellum-2); color:var(--ink); font: 400 13px "Inter"; }
+    .egrid { display:grid; grid-template-columns: repeat(auto-fit,minmax(120px,1fr)); gap:10px; }
+    .escores { display:grid; grid-template-columns: repeat(6,1fr); gap:8px; }
+    .escores .efld input { text-align:center; }
+    @media (max-width:820px){ .escores { grid-template-columns: repeat(3,1fr); } }
+  </style>
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">☾</button>
+<div class="wrap">
+  <div class="masthead"><div class="crest">🐉</div>
+    <div><h1>Bestiary</h1><div class="sub">{{ campaign.name }} · <a href="/c/{{ campaign.id }}">← dashboard</a></div></div>
+    <div class="actions"><button class="btn ghost" id="seed">Seed SRD monsters</button> <label class="btn ghost" for="imp">Import JSON</label><input id="imp" type="file" accept="application/json" hidden></div>
+  </div>
+
+  <div class="sheet-grid">
+    <div>
+      <div class="panel">
+        <span class="eyebrow">Creatures</span>
+        <div class="efields" style="margin-bottom:8px">
+          <input id="q" placeholder="Search name / type / CR" style="flex:1">
+          <select id="sort" style="border:1px solid var(--rule);border-radius:4px;background:var(--vellum-2);color:var(--ink);padding:4px">
+            <option value="name">Name</option><option value="cr">CR</option>
+          </select>
+        </div>
+        <div id="list"></div>
+      </div>
+      <div class="panel">
+        <span class="eyebrow">Quick add</span>
+        <div class="efields">
+          <input id="n" placeholder="Name" style="flex:2"><input id="ac" type="number" placeholder="AC" style="width:64px">
+          <input id="hp" type="number" placeholder="HP" style="width:64px"><input id="cr" placeholder="CR" style="width:64px">
+          <button class="btn" id="add">Add</button>
+        </div>
+        <p class="empty" style="margin:8px 0 0">Add the shell, then click it to fill the full stat block.</p>
+      </div>
+    </div>
+    <div>
+      <div class="panel" id="detail"><p class="empty">Select a creature to open its stat block.</p></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CID="{{ campaign.id }}"; let items={{ bestiary | tojson }};
+let selId=null, editing=false;
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const ABILS=["str","dex","con","int","wis","cha"];
+const mod=v=>{const m=Math.floor((Number(v)-10)/2);return (m>=0?'+':'')+m;};
+const crVal=cr=>{const s=String(cr||'').trim();if(!s)return -1;if(s.includes('/')){const p=s.split('/');return Number(p[0])/Number(p[1]);}return Number(s)||0;};
+
+function filtered(){
+  const q=document.getElementById('q').value.trim().toLowerCase();
+  let arr=items.filter(b=>!q||[b.name,b.creatureType,b.size,String(b.cr)].join(' ').toLowerCase().includes(q));
+  const s=document.getElementById('sort').value;
+  arr.sort(s==='cr'?(a,b)=>crVal(a.cr)-crVal(b.cr)||String(a.name).localeCompare(b.name):(a,b)=>String(a.name).localeCompare(b.name));
+  return arr;
+}
+
+function renderList(){
+  const arr=filtered();
+  document.getElementById('list').innerHTML = arr.length ? arr.map(b=>`
+    <div class="beast-row ${b.id===selId?'sel':''}" data-sel="${b.id}">
+      <span class="bname">${esc(b.name)}</span>
+      <span class="btag">${b.creatureType?esc(b.creatureType)+' · ':''}CR ${esc(b.cr||'—')}</span>
+    </div>`).join('') : '<p class="empty">Nothing here.</p>';
+  document.querySelectorAll('[data-sel]').forEach(r=>r.addEventListener('click',()=>{selId=r.dataset.sel;editing=false;renderList();renderDetail();}));
+}
+
+// Traits/actions are stored as newline-separated "Name. text" entries; bold the name.
+function fmtBlock(t){
+  return esc(t).split('\n').map(line=>{
+    const m=line.match(/^([^.]{1,60}\.)(\s*)([\s\S]*)$/);
+    return m?`<span class="tname">${m[1]}</span>${m[2]}${m[3]}`:line;
+  }).join('\n');
+}
+
+function renderDetail(){
+  const el=document.getElementById('detail');
+  const b=items.find(x=>x.id===selId);
+  if(!b){el.innerHTML='<p class="empty">Select a creature to open its stat block.</p>';return;}
+  if(editing){renderEdit(b,el);return;}
+  const sc=b.abilityScores||{};
+  const meta=[ [b.size,b.creatureType].filter(Boolean).join(' '), b.alignment ].filter(Boolean).join(', ');
+  const dex=sc.dex!=null?mod(sc.dex):null;
+  el.innerHTML=`
+    <div class="sec-head"><span class="eyebrow">Stat block</span></div>
+    <h2 style="margin:4px 0 0">${esc(b.name)}</h2>
+    <div class="beast-meta">${esc(meta)||'&nbsp;'}${b.source?` · <span style="font-style:normal;font-size:11px">${esc(b.source)}</span>`:''}</div>
+    ${Object.keys(sc).length?`<div class="abilities" style="margin-bottom:12px">${ABILS.map(a=>`
+      <div class="abil"><div class="name">${a.toUpperCase()}</div>
+        <div class="mod numeral">${sc[a]!=null?mod(sc[a]):'—'}</div>
+        <div class="score numeral">${sc[a]!=null?sc[a]:''}</div></div>`).join('')}</div>`:''}
+    <div class="tiles" style="grid-template-columns:repeat(5,1fr);margin-bottom:12px">
+      <div class="tile"><div class="lbl">AC</div><div class="big numeral">${esc(b.ac)}</div></div>
+      <div class="tile"><div class="lbl">Hit points</div><div class="big numeral">${esc(b.hpMax||b.hp)}</div></div>
+      <div class="tile"><div class="lbl">Speed</div><div class="big" style="font-size:20px">${esc(b.speed||'—')}</div></div>
+      <div class="tile"><div class="lbl">Initiative</div><div class="big numeral">${dex!=null?dex:'—'}</div></div>
+      <div class="tile"><div class="lbl">CR</div><div class="big numeral">${esc(b.cr||'—')}</div>${b.xp?`<div class="score numeral" style="font-size:11px;color:var(--ink-soft)">${esc(b.xp)} XP</div>`:''}</div>
+    </div>
+    ${(b.saves&&b.saves.length)||(b.skills&&b.skills.length)||b.senses||b.languages?`
+      <div style="margin-bottom:12px">
+        ${b.saves&&b.saves.length?`<div class="stat-line"><b>Saves</b> ${esc((b.saves||[]).join(', '))}</div>`:''}
+        ${b.skills&&b.skills.length?`<div class="stat-line"><b>Skills</b> ${esc((b.skills||[]).join(', '))}</div>`:''}
+        ${b.senses?`<div class="stat-line"><b>Senses</b> ${esc(b.senses)}</div>`:''}
+        ${b.languages?`<div class="stat-line"><b>Languages</b> ${esc(b.languages)}</div>`:''}
+      </div>`:''}
+    ${b.traits?`<div class="sec-head"><span class="eyebrow">Traits</span></div><div class="block-text" style="margin-bottom:12px">${fmtBlock(b.traits)}</div>`:''}
+    ${b.actions?`<div class="sec-head"><span class="eyebrow">Actions</span></div><div class="block-text" style="margin-bottom:12px">${fmtBlock(b.actions)}</div>`:''}
+    ${b.notes?`<div class="sec-head"><span class="eyebrow">Notes</span></div><div class="block-text">${fmtBlock(b.notes)}</div>`:''}
+    <div class="detail-actions">
+      <button class="btn" id="d-edit">Edit</button>
+      <button class="btn ghost" id="d-dup">Duplicate</button>
+      <button class="btn ghost" id="d-del">Delete</button>
+    </div>`;
+  document.getElementById('d-edit').addEventListener('click',()=>{editing=true;renderDetail();});
+  document.getElementById('d-dup').addEventListener('click',()=>dup(b));
+  document.getElementById('d-del').addEventListener('click',()=>del(b));
+}
+
+function renderEdit(b,el){
+  const sc=b.abilityScores||{};
+  el.innerHTML=`
+    <div class="sec-head"><span class="eyebrow">Editing — ${esc(b.name)}</span></div>
+    <div class="egrid" style="margin-top:8px">
+      <div class="efld" style="grid-column:span 2"><label>Name</label><input id="e-name" value="${esc(b.name)}"></div>
+      <div class="efld"><label>Size</label><input id="e-size" value="${esc(b.size||'')}" placeholder="Medium"></div>
+      <div class="efld"><label>Type</label><input id="e-type" value="${esc(b.creatureType||'')}" placeholder="Beast"></div>
+      <div class="efld"><label>Alignment</label><input id="e-align" value="${esc(b.alignment||'')}"></div>
+      <div class="efld"><label>AC</label><input id="e-ac" type="number" value="${esc(b.ac)}"></div>
+      <div class="efld"><label>Hit points</label><input id="e-hp" type="number" value="${esc(b.hpMax||b.hp)}"></div>
+      <div class="efld"><label>Speed</label><input id="e-speed" value="${esc(b.speed||'')}"></div>
+      <div class="efld"><label>CR</label><input id="e-cr" value="${esc(b.cr||'')}"></div>
+      <div class="efld"><label>XP</label><input id="e-xp" type="number" value="${esc(b.xp||'')}"></div>
+      <div class="efld"><label>Source</label><input id="e-src" value="${esc(b.source||'')}"></div>
+    </div>
+    <div class="sec-head" style="margin-top:12px"><span class="eyebrow">Ability scores</span></div>
+    <div class="escores" style="margin-top:6px">${ABILS.map(a=>`
+      <div class="efld"><label>${a.toUpperCase()}</label><input id="e-${a}" type="number" value="${sc[a]!=null?esc(sc[a]):''}"></div>`).join('')}</div>
+    <div class="egrid" style="margin-top:12px">
+      <div class="efld" style="grid-column:1/-1"><label>Saves (comma separated)</label><input id="e-saves" value="${esc((b.saves||[]).join(', '))}"></div>
+      <div class="efld" style="grid-column:1/-1"><label>Skills (comma separated)</label><input id="e-skills" value="${esc((b.skills||[]).join(', '))}"></div>
+      <div class="efld" style="grid-column:1/-1"><label>Senses</label><input id="e-senses" value="${esc(b.senses||'')}"></div>
+      <div class="efld" style="grid-column:1/-1"><label>Languages</label><input id="e-langs" value="${esc(b.languages||'')}"></div>
+      <div class="efld" style="grid-column:1/-1"><label>Traits — one per line, "Name. text"</label><textarea id="e-traits" rows="4">${esc(b.traits||'')}</textarea></div>
+      <div class="efld" style="grid-column:1/-1"><label>Actions — one per line, "Name. text"</label><textarea id="e-actions" rows="5">${esc(b.actions||'')}</textarea></div>
+      <div class="efld" style="grid-column:1/-1"><label>Notes</label><textarea id="e-notes" rows="3">${esc(b.notes||'')}</textarea></div>
+    </div>
+    <div class="detail-actions">
+      <button class="btn" id="e-save">Save</button>
+      <button class="btn ghost" id="e-cancel">Cancel</button>
+    </div>`;
+  document.getElementById('e-cancel').addEventListener('click',()=>{editing=false;renderDetail();});
+  document.getElementById('e-save').addEventListener('click',async()=>{
+    const v=id=>document.getElementById(id).value;
+    const list=s=>v(s).split(',').map(x=>x.trim()).filter(Boolean);
+    const hp=Number(v('e-hp'))||1;
+    const scores={}; let any=false;
+    ABILS.forEach(a=>{const x=v('e-'+a); if(x!==''){scores[a]=Number(x); any=true;}});
+    const upd=Object.assign({},b,{
+      name:v('e-name').trim()||'Creature', size:v('e-size').trim(), creatureType:v('e-type').trim(),
+      alignment:v('e-align').trim(), ac:Number(v('e-ac'))||10, hp:hp, hpMax:hp,
+      speed:v('e-speed').trim(), cr:v('e-cr').trim(), xp:Number(v('e-xp'))||undefined,
+      source:v('e-src').trim(), abilityScores:any?scores:undefined,
+      saves:list('e-saves'), skills:list('e-skills'),
+      senses:v('e-senses').trim(), languages:v('e-langs').trim(),
+      traits:v('e-traits'), actions:v('e-actions'), notes:v('e-notes')
+    });
+    Object.keys(upd).forEach(k=>{if(upd[k]===undefined)delete upd[k];});
+    const r=await fetch('/api/campaign/'+CID+'/bestiary/'+b.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(upd)});
+    if(!r.ok){alert('Save failed');return;}
+    items[items.findIndex(x=>x.id===b.id)]=upd;
+    editing=false; renderList(); renderDetail();
+  });
+}
+
+async function dup(b){
+  const copy=Object.assign({},b,{name:b.name+' (copy)'}); delete copy.id;
+  const r=await fetch('/api/campaign/'+CID+'/bestiary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(copy)});
+  const d=await r.json(); items.push(d.item); selId=d.item.id; renderList(); renderDetail();
+}
+async function del(b){
+  if(!confirm('Delete '+b.name+'?'))return;
+  await fetch('/api/campaign/'+CID+'/bestiary/'+b.id,{method:'DELETE'});
+  items=items.filter(x=>x.id!==b.id); if(selId===b.id){selId=null;editing=false;}
+  renderList(); renderDetail();
+}
+async function add(){
+  const hp=Number(document.getElementById('hp').value)||1;
+  const item={name:document.getElementById('n').value.trim()||'Creature',ac:Number(document.getElementById('ac').value)||10,
+    hp:hp,hpMax:hp,cr:document.getElementById('cr').value,speed:'',notes:''};
+  const r=await fetch('/api/campaign/'+CID+'/bestiary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(item)});
+  const d=await r.json(); items.push(d.item); ['n','ac','hp','cr'].forEach(i=>document.getElementById(i).value='');
+  selId=d.item.id; editing=true; renderList(); renderDetail();
+}
+
+document.getElementById('add').addEventListener('click',add);
+document.getElementById('q').addEventListener('input',renderList);
+document.getElementById('sort').addEventListener('change',renderList);
+document.getElementById('seed').addEventListener('click',async()=>{
+  const r=await fetch('/api/campaign/'+CID+'/seed-srd',{method:'POST'});const d=await r.json();
+  alert('Added '+d.added+' SRD creatures'+(d.enriched?(', upgraded '+d.enriched+' existing entries with full stat blocks'):'')+'.');
+  location.reload();
+});
+document.getElementById('imp').addEventListener('change',async e=>{
+  const f=e.target.files[0]; if(!f) return; const fd=new FormData(); fd.append('file',f);
+  const r=await fetch('/api/campaign/'+CID+'/bestiary/import',{method:'POST',body:fd}); const d=await r.json();
+  if(!r.ok){alert(d.error||'Import failed');return;} alert('Imported '+d.added+' creatures.'); location.reload();
+});
+renderList(); renderDetail();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+</body></html>

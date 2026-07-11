@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Combat — {{ campaign.name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>body{background:#1c1a15;color:var(--vellum)} .wrap{max-width:760px} h1{text-align:center;color:var(--vellum)}</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Initiative — <span id="round">Round 1</span></h1>
+  <div id="order"><p style="text-align:center;color:#b3a98f">Waiting for the DM to roll initiative…</p></div>
+</div>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+const cid = "{{ campaign.id }}";
+const socket = io();
+socket.on('connect', () => socket.emit('join', { campaignId: cid }));
+let enc = {{ campaign.encounter | tojson }};
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function statusFor(c){
+  if (c.kind === 'pc') return c.hpCurrent + '/' + c.hpMax + ' HP';
+  const pct = c.hpMax ? 100*c.hpCurrent/c.hpMax : 0;          // hide enemy numbers
+  if (pct<=0) return 'Down'; if (pct<35) return 'Bloodied'; if (pct<100) return 'Wounded'; return 'Healthy';
+}
+function render(){
+  document.getElementById('round').textContent = 'Round ' + (enc.round||1);
+  const order = (enc.combatants||[]).slice().sort((a,b)=>b.init-a.init);
+  if (!order.length || !enc.active){ document.getElementById('order').innerHTML='<p style="text-align:center;color:#b3a98f">Waiting for the DM to roll initiative…</p>'; return; }
+  document.getElementById('order').innerHTML = order.map((c,i)=>{
+    const turn = order[enc.turn] && order[enc.turn].id===c.id;
+    const conds = (c.conditions||[]).map(x=>`<span class="cond ${x.kind}" style="font-size:11px">${esc(x.name)}</span>`).join(' ');
+    return `<div class="cv-row ${turn?'turn':''}"><div class="cv-init">${c.init}</div>
+      <div><div class="cv-name">${turn?'▸ ':''}${esc(c.name)}</div>
+      <div class="cv-status">${statusFor(c)} ${conds}</div></div></div>`;
+  }).join('');
+}
+socket.on('combat:update', m => { enc = m.encounter; render(); });
+render();
+</script>
+</body>
+</html>

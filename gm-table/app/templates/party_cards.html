@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Party Cards &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap" style="max-width:1100px">
+  <div class="masthead"><div class="crest">&#127183;</div>
+    <div><h1>Party Cards</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a>
+      &middot; <a href="/c/{{ campaign.id }}/builder">edit layout</a></div></div>
+  </div>
+  <div id="cards" class="roster" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))"></div>
+  <p class="empty" id="noimg" style="display:none">No Party Card layout yet. Open the Sheet Builder and design one.</p>
+</div>
+<script>
+const CHARS={{ characters | tojson }};
+const LIB={{ library | tojson }};
+const LAYOUT={{ layout | tojson }};
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function resolve(char,it){
+  if(it.describes){ const v=it.describes.split('.').reduce((o,k)=>(o==null?undefined:o[k]),char); return fmt(v); }
+  const c=(char.definition.custom||{}); return fmt(it.wid in c ? c[it.wid] : '');
+}
+function fmt(v){
+  if(v==null||v==='') return '—';
+  if(typeof v==='boolean') return v?'✓':'—';
+  if(typeof v==='object'){ if('used' in v && 'max' in v) return (v.max-v.used)+'/'+v.max; return JSON.stringify(v); }
+  return esc(v);
+}
+function render(){
+  if(!LAYOUT.length){ document.getElementById('noimg').style.display='block'; }
+  document.getElementById('cards').innerHTML = CHARS.map(ch=>{
+    const widgets = LAYOUT.length ? LAYOUT.map(it=>`
+      <div class="pc-w" style="left:${it.x}px;top:${it.y}px">
+        <div class="pc-lb">${esc(it.label)}</div><div class="pc-val">${resolve(ch,it)}</div>
+      </div>`).join('')
+      : `<div class="pc-w" style="left:14px;top:14px"><div class="pc-lb">Name</div><div class="pc-val">${esc(ch.definition.name)}</div></div>`;
+    return `<div class="panel" style="padding:14px">
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+        ${ch.definition.portrait?`<img src="${ch.definition.portrait}" style="width:40px;height:40px;border-radius:50%;object-fit:cover">`:''}
+        <b>${esc(ch.definition.name)}</b></div>
+      <div class="pc-card">${widgets}</div>
+    </div>`;
+  }).join('') || '<p class="empty">No characters in the active party.</p>';
+}
+render();
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

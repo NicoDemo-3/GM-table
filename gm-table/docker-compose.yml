@@ -1,0 +1,9 @@
+services:
+  table:
+    build: .
+    container_name: gm-table
+    ports:
+      - "5000:5000"          # http://<host-ip>:5000 on your LAN
+    volumes:
+      - ./data:/srv/data      # SQLite persists across restarts/rebuilds
+    restart: unless-stopped

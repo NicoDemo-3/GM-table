@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compendium &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap" style="max-width:1100px">
+  <div class="masthead"><div class="crest">&#128218;</div>
+    <div><h1>Compendium</h1><div class="sub">{{ campaign.name }} &middot; <a href="/c/{{ campaign.id }}">&larr; dashboard</a></div></div>
+    <div class="actions"><button class="btn ghost" id="show-import">Import</button></div>
+  </div>
+
+  <div id="import-panel" class="panel" style="display:none">
+    <span class="eyebrow">Import entries</span>
+    <p class="sub" style="margin-top:0">Upload or paste a structured file (<b>.json</b> or <b>.md</b>). Have any LLM generate one in this format — <a href="#" id="show-fmt">show format &amp; template</a>. You'll preview everything before it's added.</p>
+    <div id="fmt" style="display:none"><pre style="white-space:pre-wrap;background:var(--vellum-2);border:1px solid var(--rule);border-radius:6px;padding:10px;font-size:12px">{{ example }}</pre></div>
+    <div class="efields">
+      <label class="btn ghost" for="impfile">Choose file</label><input id="impfile" type="file" accept=".json,.md,.txt" hidden>
+      <span id="impname" class="sub"></span>
+    </div>
+    <textarea id="imptext" placeholder="…or paste JSON / Markdown here" rows="5" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:4px;padding:8px;background:var(--vellum-2);color:var(--ink);font-family:monospace;font-size:12px"></textarea>
+    <button class="btn" id="preview" style="margin-top:8px">Preview</button>
+    <div id="preview-out"></div>
+    <div style="margin-top:16px"><span class="eyebrow">From a PDF</span>
+      <p class="sub" style="margin-top:0">Extract a PDF's text to hand to your LLM (which returns an import file above). Full auto-import comes with the assistant.</p>
+      <label class="btn ghost" for="pdffile">Choose PDF</label><input id="pdffile" type="file" accept="application/pdf" hidden>
+      <textarea id="pdfout" placeholder="Extracted text appears here to copy" rows="4" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:4px;padding:8px;background:var(--vellum-2);color:var(--ink);font-size:12px"></textarea>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ref-snav" id="folderbar" style="margin-bottom:8px"></div>
+    <div class="ref-snav" id="typetabs"></div>
+    <input id="q" placeholder="Search…" style="width:100%;border:1px solid var(--rule);border-radius:6px;padding:8px;font:inherit;background:var(--vellum-2);color:var(--ink);margin-bottom:10px">
+    <div id="foldermanage" class="efields" style="display:none;margin-bottom:8px;align-items:center"></div>
+    <div id="bulkbar" class="efields" style="align-items:center;margin-bottom:8px"></div>
+    <div id="list"></div>
+  </div>
+
+  <div class="panel">
+    <span class="eyebrow">Add an entry</span>
+    <div class="efields">
+      <select id="a-type">{% for t in types %}<option>{{ t }}</option>{% endfor %}</select>
+      <input id="a-name" placeholder="Name" style="flex:2">
+      <input id="a-source" placeholder="Source" style="flex:1">
+      <input id="a-folder" placeholder="Folder (optional)" style="flex:1">
+      <input id="a-tags" placeholder="tags, comma" style="flex:1">
+    </div>
+    <textarea id="a-mech" placeholder="Mechanics, one per line — e.g.&#10;level: 1&#10;rarity: Uncommon&#10;modifier: AC +1&#10;abilityBonuses: DEX 1&#10;skills: Acrobatics, Performance" rows="4" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:4px;padding:8px;background:var(--vellum-2);color:var(--ink);font-family:monospace;font-size:12px"></textarea>
+    <textarea id="a-text" placeholder="Description / situational text" rows="3" style="width:100%;margin-top:8px;border:1px solid var(--rule);border-radius:4px;padding:8px;background:var(--vellum-2);color:var(--ink)"></textarea>
+    <button class="btn" id="a-add" style="margin-top:8px">Add entry</button>
+  </div>
+</div>
+<script>
+const CID="{{ campaign.id }}";
+let entries={{ entries | tojson }};
+const CHARS={{ characters | tojson }};
+const NPCS={{ npcs | tojson }};
+const BEASTS={{ beasts | tojson }};
+let filter='all', query='', folderFilter='all';
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const TYPES={{ types | tojson }};
+
+document.getElementById('typetabs').innerHTML=['all',...TYPES].map(t=>`<button class="btn ghost tt ${t==='all'?'on':''}" data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('');
+document.querySelectorAll('.tt').forEach(b=>b.onclick=()=>{filter=b.dataset.t;document.querySelectorAll('.tt').forEach(x=>x.classList.toggle('on',x.dataset.t===filter));render();});
+document.getElementById('q').oninput=e=>{query=e.target.value.toLowerCase();render();};
+
+let selected=new Set();
+function folderList(){ return [...new Set(entries.map(e=>e.folder||'').filter(Boolean))].sort(); }
+function renderFolders(){
+  const fl=folderList();
+  document.getElementById('folderbar').innerHTML =
+    `<button class="btn ghost fb ${folderFilter==='all'?'on':''}" data-f="all">All folders</button>`+
+    `<button class="btn ghost fb ${folderFilter==='__none'?'on':''}" data-f="__none">Unfiled</button>`+
+    fl.map(f=>`<button class="btn ghost fb ${folderFilter===f?'on':''}" data-f="${esc(f)}">📁 ${esc(f)}</button>`).join('');
+  document.querySelectorAll('.fb').forEach(b=>b.onclick=()=>{folderFilter=b.dataset.f;renderFolders();render();});
+  // folder management row (shown when a real folder is selected)
+  const fm=document.getElementById('foldermanage');
+  if(folderFilter!=='all'&&folderFilter!=='__none'){
+    fm.style.display='block';
+    fm.innerHTML=`<span class="sub">Folder “${esc(folderFilter)}”:</span>
+      <button class="btn ghost" id="f-rename">Rename</button>
+      <button class="btn ghost" id="f-delkeep">Delete folder (keep entries)</button>
+      <button class="btn ghost" id="f-delall" style="color:var(--garnet)">Delete folder + all entries</button>`;
+    document.getElementById('f-rename').onclick=async()=>{
+      const nn=(prompt('Rename folder to:',folderFilter)||'').trim(); if(!nn||nn===folderFilter) return;
+      await fetch(`/api/campaign/${CID}/compendium/folder`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'rename',name:folderFilter,newName:nn})});
+      entries.forEach(e=>{if(e.folder===folderFilter)e.folder=nn;}); folderFilter=nn; renderFolders(); render();
+    };
+    document.getElementById('f-delkeep').onclick=async()=>{
+      if(!confirm(`Remove folder “${folderFilter}”? Its entries stay, just unfiled.`)) return;
+      await fetch(`/api/campaign/${CID}/compendium/folder`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'delete',name:folderFilter})});
+      entries.forEach(e=>{if(e.folder===folderFilter)e.folder='';}); folderFilter='all'; renderFolders(); render();
+    };
+    document.getElementById('f-delall').onclick=async()=>{
+      const n=entries.filter(e=>e.folder===folderFilter).length;
+      if(!confirm(`Delete folder “${folderFilter}” AND all ${n} entries in it? This cannot be undone.`)) return;
+      await fetch(`/api/campaign/${CID}/compendium/folder`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({op:'delete-contents',name:folderFilter})});
+      entries=entries.filter(e=>e.folder!==folderFilter); folderFilter='all'; renderFolders(); render();
+    };
+  } else { fm.style.display='none'; }
+}
+async function setFolder(id, folder){
+  const e=entries.find(x=>x.id===id); if(!e) return;
+  const body=Object.assign({}, flatten(e), {folder});
+  await fetch(`/api/campaign/${CID}/compendium/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  e.folder=folder; renderFolders(); render();
+}
+function flatten(e){ return Object.assign({type:e.type,name:e.name,source:e.source,folder:e.folder,tags:(e.tags||[]).join(', '),text:e.text}, e.mechanics||{}); }
+
+function mechLine(e){
+  const m=e.mechanics||{}; const bits=[];
+  if(m.level!=null) bits.push('Lvl '+m.level); if(m.school) bits.push(m.school);
+  if(m.rarity) bits.push(m.rarity); if(m.attunement) bits.push('attunement');
+  if(m.className) bits.push(m.className);
+  if(m.cr!=null) bits.push('CR '+m.cr); if(m.creatureType) bits.push(m.creatureType);
+  if(m.ac!=null) bits.push('AC '+m.ac); if(m.hp!=null) bits.push('HP '+m.hp);
+  if(m.modifiers&&m.modifiers.length) bits.push(m.modifiers.map(x=>x.target+' '+(x.value>=0?'+':'')+x.value).join(', '));
+  if(m.abilityBonuses) bits.push(Object.entries(m.abilityBonuses).map(([k,v])=>k+' +'+v).join(', '));
+  if(Array.isArray(m.skills)&&m.skills.length) bits.push('Skills: '+m.skills.join(', '));
+  return bits.join(' · ');
+}
+function render(){
+  const fl=folderList();
+  const list=entries.filter(e=>(filter==='all'||e.type===filter) &&
+    (folderFilter==='all' || (folderFilter==='__none'?!e.folder:e.folder===folderFilter)) &&
+    (!query || (e.name+' '+e.type+' '+(e.folder||'')+' '+(e.tags||[]).join(' ')+' '+(e.text||'')).toLowerCase().includes(query)));
+  const folderOpts=f=>['',...fl].map(x=>`<option value="${esc(x)}" ${(f||'')===x?'selected':''}>${x?esc(x):'— unfiled —'}</option>`).join('');
+  // bulk bar
+  const visIds=list.map(e=>e.id);
+  const selCount=visIds.filter(id=>selected.has(id)).length;
+  document.getElementById('bulkbar').innerHTML = list.length ? `
+    <label class="ecbx" style="margin:0"><input type="checkbox" id="selall" ${selCount===list.length&&list.length?'checked':''}> select all (${list.length})</label>
+    ${selCount?`<span class="sub">${selCount} selected</span><button class="btn" id="bulkdel" style="color:#fff;background:var(--garnet)">Delete ${selCount}</button>`:''}` : '';
+  const sa=document.getElementById('selall');
+  if(sa) sa.onchange=()=>{ if(sa.checked) visIds.forEach(id=>selected.add(id)); else visIds.forEach(id=>selected.delete(id)); render(); };
+  const bd=document.getElementById('bulkdel');
+  if(bd) bd.onclick=async()=>{
+    const ids=[...selected]; if(!confirm(`Delete ${ids.length} entr${ids.length===1?'y':'ies'}? This cannot be undone.`)) return;
+    await fetch(`/api/campaign/${CID}/compendium/bulk-delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+    entries=entries.filter(e=>!selected.has(e.id)); selected.clear(); renderFolders(); render();
+  };
+  document.getElementById('list').innerHTML = list.length ? list.map(e=>`
+    <div class="comp-card">
+      <div class="tool-row" style="border:none">
+        <input type="checkbox" class="sel" data-id="${e.id}" ${selected.has(e.id)?'checked':''} style="margin-right:6px">
+        <span class="grow comp-head" data-x="${e.id}" style="cursor:pointer">
+          <b>${esc(e.name)}</b> <span style="color:var(--ink-soft);font-size:11px;text-transform:uppercase">${esc(e.type)}</span>
+          ${e.folder?`<span style="color:var(--gold);font-size:11px"> 📁 ${esc(e.folder)}</span>`:''}
+          <span class="comp-caret" style="color:var(--ink-soft);font-size:11px"> ▸</span>
+          ${mechLine(e)?`<div style="font-size:12px;color:var(--ink-soft)">${esc(mechLine(e))}</div>`:''}
+        </span>
+        <select class="move-to" data-id="${e.id}" title="Move to folder"><option value="">📁 move…</option>${folderOpts(e.folder)}<option value="__new">＋ new folder…</option></select>
+        ${e.type==='monster'?`<button class="btn ghost to-best" data-id="${e.id}" title="Send to bestiary">→ 🐉</button>`:''}
+        ${applySelect(e)}
+        <button class="erm" data-del="${e.id}">&times;</button>
+      </div>
+      <div class="comp-desc" id="desc-${e.id}" style="display:none">${descHtml(e)}</div>
+    </div>`).join('') : '<p class="empty">No entries here.</p>';
+  document.querySelectorAll('.sel').forEach(c=>c.onchange=()=>{ c.checked?selected.add(c.dataset.id):selected.delete(c.dataset.id); render(); });
+  document.querySelectorAll('.comp-head').forEach(h=>h.onclick=()=>{
+    const d=document.getElementById('desc-'+h.dataset.x); const open=d.style.display!=='none';
+    d.style.display=open?'none':'block'; h.querySelector('.comp-caret').textContent=open?' ▸':' ▾';
+  });
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async(ev)=>{ev.stopPropagation();await fetch(`/api/campaign/${CID}/compendium/${b.dataset.del}`,{method:'DELETE'});entries=entries.filter(x=>x.id!==b.dataset.del);selected.delete(b.dataset.del);renderFolders();render();});
+  document.querySelectorAll('.move-to').forEach(s=>s.onchange=async()=>{
+    let v=s.value; if(!v&&v!=='') return;
+    if(v==='__new'){ v=(prompt('New folder name:')||'').trim(); if(!v){s.value='';return;} }
+    await setFolder(s.dataset.id, v);
+  });
+  document.querySelectorAll('.to-best').forEach(b=>b.onclick=async()=>{
+    const r=await fetch(`/api/campaign/${CID}/compendium/${b.dataset.id}/to-bestiary`,{method:'POST'});
+    alert(r.ok?'Added to the bestiary.':'Failed.');
+  });
+  document.querySelectorAll('.apply-to').forEach(s=>s.onchange=async()=>{
+    if(!s.value) return;
+    const [kind,iid]=s.value.split(':');
+    const url = kind==='pc'
+      ? `/api/campaign/${CID}/compendium/${s.dataset.id}/apply/${iid}`
+      : `/api/campaign/${CID}/compendium/${s.dataset.id}/apply-entity/${kind}/${iid}`;
+    const r=await fetch(url,{method:'POST'});
+    const d=await r.json(); alert(r.ok?d.note:(d.error||'Failed')); s.value='';
+  });
+}
+function applySelect(e){
+  // monster entries don't apply onto sheets/NPCs; they go to the bestiary instead
+  if(e.type==='monster') return '';
+  const grp=(label,arr,kind)=> arr.length?`<optgroup label="${label}">`+arr.map(x=>`<option value="${kind}:${x.id}">${esc(x.name)}</option>`).join('')+`</optgroup>`:'';
+  const opts=grp('Player characters',CHARS,'pc')+grp('NPCs',NPCS,'npcs')+grp('Beasts',BEASTS,'bestiary');
+  if(!opts) return '';
+  return `<select class="apply-to" data-id="${e.id}"><option value="">apply to…</option>${opts}</select>`;
+}
+function descHtml(e){
+  const m=e.mechanics||{}; const rows=[];
+  const add=(k,v)=>{ if(v!=null&&v!==''&&!(Array.isArray(v)&&!v.length)) rows.push(`<div><span class="dk">${esc(k)}</span> ${esc(Array.isArray(v)?v.join(', '):(typeof v==='object'?JSON.stringify(v):v))}</div>`); };
+  if(e.source) add('Source',e.source);
+  Object.entries(m).forEach(([k,v])=>{
+    if(k==='modifiers'&&Array.isArray(v)) add('Modifiers', v.map(x=>x.target+' '+(x.value>=0?'+':'')+x.value).join(', '));
+    else if(k==='abilityScores'||k==='abilityBonuses') add(k, Object.entries(v||{}).map(([a,n])=>a+' '+n).join(', '));
+    else if(k==='features'&&Array.isArray(v)) v.forEach(f=>add((f.name||'Feature')+(f.level?` (L${f.level})`:''), f.text||''));
+    else add(k, v);
+  });
+  const body=(e.text||'').trim();
+  const bodyHtml = body ? `<div class="comp-text">${esc(body).replace(/\n/g,'<br>')}</div>` : '<div class="sub">No description.</div>';
+  return (rows.length?`<div class="comp-mech">${rows.join('')}</div>`:'')+bodyHtml;
+}
+function parseMech(txt){
+  const o={};
+  txt.split('\n').forEach(ln=>{const m=ln.match(/^([\w ]+?)\s*:\s*(.*)$/);if(!m)return;
+    let k=m[1].trim().replace(/ /g,''); let v=m[2].trim();
+    if(k==='modifier'||k==='mod'){o.modifiers=o.modifiers||[];o.modifiers.push(v);}
+    else if(k==='skills'||k==='saves'||k==='classes'||k==='tags') o[k]=v.split(',').map(s=>s.trim()).filter(Boolean);
+    else if(k==='abilityBonuses'){o.abilityBonuses={};v.split(',').forEach(p=>{const[a,n]=p.trim().split(/\s+/);if(a)o.abilityBonuses[a.toUpperCase().slice(0,3)]=+n||1;});}
+    else o[k]=v;
+  });
+  return o;
+}
+document.getElementById('a-add').onclick=async()=>{
+  const body=Object.assign({type:document.getElementById('a-type').value,name:document.getElementById('a-name').value.trim(),
+    source:document.getElementById('a-source').value,folder:document.getElementById('a-folder').value.trim(),
+    tags:document.getElementById('a-tags').value,
+    text:document.getElementById('a-text').value}, parseMech(document.getElementById('a-mech').value));
+  const r=await fetch(`/api/campaign/${CID}/compendium`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const d=await r.json(); entries.push(d.entry);
+  ['a-name','a-source','a-folder','a-tags','a-mech','a-text'].forEach(i=>document.getElementById(i).value=''); renderFolders(); render();
+};
+
+// import
+document.getElementById('show-import').onclick=()=>{const p=document.getElementById('import-panel');p.style.display=p.style.display==='none'?'block':'none';};
+document.getElementById('show-fmt').onclick=e=>{e.preventDefault();const f=document.getElementById('fmt');f.style.display=f.style.display==='none'?'block':'none';};
+let impText='',impName='';
+document.getElementById('impfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;impText=await f.text();impName=f.name;document.getElementById('impname').textContent=f.name;document.getElementById('imptext').value=impText;};
+document.getElementById('preview').onclick=async()=>{
+  const text=document.getElementById('imptext').value||impText;
+  const r=await fetch(`/api/campaign/${CID}/compendium/import/preview`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,filename:impName})});
+  const d=await r.json();
+  if(!r.ok){document.getElementById('preview-out').innerHTML=`<div class="gen-out" style="color:var(--garnet)">${esc(d.error)}</div>`;return;}
+  document.getElementById('preview-out').innerHTML=`<div class="gen-out"><b>${d.count} entr${d.count===1?'y':'ies'} parsed:</b>`+
+    d.entries.map(e=>`<div class="tool-row"><span class="grow">${esc(e.name)} <span style="color:var(--ink-soft);font-size:11px">${esc(e.type)}</span></span></div>`).join('')+
+    `<button class="btn" id="commit" style="margin-top:8px">Add all ${d.count}</button></div>`;
+  document.getElementById('commit').onclick=async()=>{
+    const r2=await fetch(`/api/campaign/${CID}/compendium/import/commit`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entries:d.entries})});
+    const d2=await r2.json(); alert('Added '+d2.added+' entries.'); location.reload();
+  };
+};
+document.getElementById('pdffile').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return; const fd=new FormData();fd.append('file',f);
+  document.getElementById('pdfout').value='Extracting…';
+  const r=await fetch(`/api/campaign/${CID}/compendium/pdf-text`,{method:'POST',body:fd});
+  const d=await r.json(); document.getElementById('pdfout').value=r.ok?d.text:(d.error||'Failed');
+};
+renderFolders();
+render();
+</script>
+<script>window.__CID__="{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

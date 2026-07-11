@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ card|capitalize }} Cards &mdash; {{ campaign.name }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">&#9790;</button>
+<div class="wrap" style="max-width:1100px">
+  <div class="masthead"><div class="crest">&#127183;</div>
+    <div><h1>{{ card|capitalize }} Cards</h1><div class="sub">{{ campaign.name }} &middot;
+      <a href="/c/{{ campaign.id }}">&larr; dashboard</a> &middot;
+      <a href="/c/{{ campaign.id }}/builder">edit layout</a></div></div>
+  </div>
+  {% if not layout %}<div class="panel"><p class="empty">No {{ card }} card layout yet. Open the Sheet Builder, switch to the {{ card|capitalize }} card, design it, and save.</p></div>{% endif %}
+  <div id="cards" class="roster" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))"></div>
+</div>
+<script>
+const ENTITIES={{ entities | tojson }};
+const LAYOUT={{ layout | tojson }};
+const TYPE="{{ card }}";
+</script>
+<script src="{{ url_for('static', filename='cards.js') }}"></script>
+<script>renderCards('cards', ENTITIES, TYPE, LAYOUT, 'Name');</script>
+<script>window.__CID__="{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+</body></html>

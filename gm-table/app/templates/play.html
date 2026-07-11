@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>(function(){try{document.documentElement.setAttribute("data-theme",localStorage.getItem("gmtheme")||"light")}catch(e){}})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose your hero</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<button class="theme-corner" data-theme-icon onclick="gmToggleTheme()" title="Light / Dark">☾</button>
+<div class="wrap">
+  <div id="handout-banner" style="display:none;background:var(--ink);color:var(--vellum-2);border-radius:8px;padding:14px 18px;margin-bottom:16px"></div>
+  <div class="portal-hero">
+    <h1>The Party</h1>
+    <p>Tap your character to open and edit your sheet. The cards below show how everyone's holding up — keep an eye on each other.</p>
+  </div>
+
+  {% if characters %}
+  <div class="pick-grid">
+    {% set benched = campaign.get("party",{}).get("benched",[]) %}
+    {% for c in characters %}{% if c.id not in benched %}
+    {% set max = c.derived.maxHp.value or 1 %}
+    {% set pct = (100 * c.state.currentHp / max) %}
+    <a class="pick" href="/sheet/{{ c.id }}" data-id="{{ c.id }}" data-max="{{ max }}">
+      {% if c.definition.portrait %}<img src="{{ c.definition.portrait }}" alt="">{% endif %}
+      <div class="pname">{{ c.definition.name }}</div>
+      <div class="pmeta">{{ c.definition.species }}
+        {% for cl in c.definition.classes %}· {{ cl.name }} {{ cl.level }}{% endfor %}</div>
+      <div class="hpbar {% if pct < 35 %}low{% endif %}"><i style="width:{{ pct }}%"></i></div>
+      <div class="pvitals numeral"><span data-hp>{{ c.state.currentHp }}</span> / {{ max }} HP · AC <span data-ac>{{ c.derived.armorClass.value }}</span></div>
+      <div class="mini-cond" data-conds>
+        {% for cond in c.state.conditions %}
+        <span class="mini-pill {{ cond.kind }}" title="{{ cond.base }}">{{ cond.name }}{% if cond.level %} {{ cond.level }}{% endif %}</span>
+        {% endfor %}
+      </div>
+    </a>
+    {% endif %}{% endfor %}
+  </div>
+  {% else %}
+  <div class="panel"><p class="empty">No characters yet — ask your DM to import them.</p></div>
+  {% endif %}
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const socket = io();
+  document.querySelectorAll('.pick').forEach(p => socket.emit('join', { characterId: p.dataset.id }));
+
+  socket.emit('join', { campaignId: "{{ campaign.id }}" });
+  socket.on('handout', (m) => {
+    const b = document.getElementById('handout-banner'); const h = m.handout || {};
+    if (!h.content) { b.style.display='none'; return; }
+    b.style.display='block';
+    b.innerHTML = h.type==='image' ? ('<img src="'+h.content+'" style="max-width:100%;border-radius:6px">') :
+      ('<div style="font-family:Cormorant Garamond,serif;font-size:20px">'+String(h.content).replace(/</g,'&lt;')+'</div>');
+  });
+  socket.on('character:update', (c) => {
+    const card = document.querySelector(`.pick[data-id="${c.id}"]`);
+    if (!card) return;
+    const max = c.derived.maxHp.value || 1;
+    const pct = 100 * c.state.currentHp / max;
+    card.querySelector('[data-hp]').textContent = c.state.currentHp;
+    card.querySelector('[data-ac]').textContent = c.derived.armorClass.value;
+    const bar = card.querySelector('.hpbar'); bar.classList.toggle('low', pct < 35);
+    bar.querySelector('i').style.width = pct + '%';
+    const cc = card.querySelector('[data-conds]');
+    cc.innerHTML = (c.state.conditions || []).map(x =>
+      `<span class="mini-pill ${x.kind}" title="${(x.base||'').replace(/"/g,'&quot;')}">${x.name}${x.level ? ' ' + x.level : ''}</span>`
+    ).join('');
+  });
+</script>
+<script src="{{ url_for('static', filename='theme.js') }}"></script>
+<script>window.__PLAYER_CID__ = "{{ campaign.id }}";</script>
+<script src="{{ url_for('static', filename='player-sidebar.js') }}"></script>
+</body>
+</html>
